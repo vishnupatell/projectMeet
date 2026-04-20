@@ -1,0 +1,103 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 22, 34, 40;
+  --background-start-rgb: 241, 246, 248;
+  --background-end-rgb: 250, 252, 253;
+  --surface-rgb: 255, 255, 255;
+  --ring-rgb: 15, 117, 140;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background:
+    radial-gradient(1000px 540px at 15% -10%, rgba(106, 184, 203, 0.2), transparent 58%),
+    radial-gradient(900px 480px at 95% 0%, rgba(163, 226, 211, 0.14), transparent 64%),
+    linear-gradient(180deg, rgb(var(--background-end-rgb)), rgb(var(--background-start-rgb)));
+  min-height: 100vh;
+}
+
+* {
+  @apply border-mist-200;
+}
+
+::selection {
+  background: rgba(15, 117, 140, 0.22);
+  color: #0f2026;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(227, 236, 240, 0.55);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #bfd1d8;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #7ea8b3;
+}
+
+/* Animation utilities */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-up {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes zoom-in {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
+}
+
+.animate-zoom-in {
+  animation: zoom-in 0.2s ease-out;
+}
+
+.frosted-panel {
+  background: rgba(var(--surface-rgb), 0.88);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(209, 234, 240, 0.9);
+  box-shadow: 0 12px 35px -20px rgba(7, 59, 71, 0.48);
+}
+
+.surface-card {
+  @apply rounded-2xl border border-mist-200/90 bg-white shadow-card;
+}
