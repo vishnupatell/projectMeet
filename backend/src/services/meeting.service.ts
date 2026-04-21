@@ -1,10 +1,12 @@
 import { meetingRepository } from '../repositories/meeting.repository';
 import { chatRepository } from '../repositories/chat.repository';
+import prisma from '../config/database';
 import { CreateMeetingInput } from '../validators/meeting.validator';
 import { NotFoundError, ForbiddenError, ValidationError } from '../utils/errors';
 import { generateMeetingCode } from '../utils/helpers';
 import { config } from '../config';
 import { logger } from '../utils/logger';
+import { invitationService } from './invitation.service';
 
 export class MeetingService {
   async createMeeting(input: CreateMeetingInput, userId: string) {
@@ -30,6 +32,27 @@ export class MeetingService {
 
     // Add owner as HOST participant
     await meetingRepository.addParticipant(meeting.id, userId, 'HOST');
+
+    if (input.inviteeEmails && input.inviteeEmails.length > 0) {
+      const owner = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { displayName: true, email: true },
+      });
+      const inviterName = owner?.displayName || 'Someone';
+      const ownerEmail = owner?.email?.toLowerCase();
+      const filteredEmails = input.inviteeEmails.filter(
+        (e) => e.toLowerCase() !== ownerEmail,
+      );
+
+      await invitationService.inviteEmails({
+        meetingId: meeting.id,
+        meetingCode: meeting.code,
+        meetingTitle: meeting.title,
+        scheduledAt: meeting.scheduledAt ?? null,
+        inviterName,
+        emails: filteredEmails,
+      });
+    }
 
     logger.info({ meetingId: meeting.id, code }, 'Meeting created');
     return meeting;
@@ -65,6 +88,25 @@ export class MeetingService {
     const activeParticipants = await meetingRepository.getActiveParticipants(meeting.id);
     if (activeParticipants.length >= meeting.maxParticipants) {
       throw new ValidationError('Meeting is full');
+    }
+
+    const isHost = meeting.ownerId === userId;
+
+    // Non-hosts can't join a scheduled meeting before its start time.
+    // Hosts can start early; joining will also activate the meeting below.
+    if (
+      !isHost &&
+      meeting.status === 'SCHEDULED' &&
+      meeting.scheduledAt &&
+      meeting.scheduledAt.getTime() > Date.now()
+    ) {
+      const when = meeting.scheduledAt.toLocaleString('en-US', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      });
+      throw new ValidationError(
+        `This meeting hasn't started yet. It will be available at ${when}.`,
+      );
     }
 
     // If meeting was scheduled, activate it when someone joins

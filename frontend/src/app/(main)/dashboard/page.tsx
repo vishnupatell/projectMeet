@@ -34,6 +34,15 @@ import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
+import { EmailChipInput } from '@/components/ui/EmailChipInput';
+import {
+  getMeetingStatus,
+  formatCountdown,
+  statusBadgeClasses,
+} from '@/lib/meetingStatus';
+import { useNow } from '@/lib/hooks/useNow';
+import { useInviteBadge } from '@/lib/hooks/useInviteBadge';
+import { Lock, Mail, Inbox } from 'lucide-react';
 import type { Meeting } from '@/types';
 
 export default function DashboardPage() {
@@ -46,15 +55,20 @@ export default function DashboardPage() {
   const meetingError = useAppSelector(selectMeetingError);
 
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showInstantModal, setShowInstantModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [showCreatedModal, setShowCreatedModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [meetingTitle, setMeetingTitle] = useState('');
   const [meetingDescription, setMeetingDescription] = useState('');
   const [scheduledAt, setScheduledAt] = useState('');
+  const [inviteeEmails, setInviteeEmails] = useState<string[]>([]);
+  const [instantEmails, setInstantEmails] = useState<string[]>([]);
   const [joinCode, setJoinCode] = useState('');
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const pendingActionRef = useRef<'instant' | 'scheduled' | null>(null);
+  const now = useNow(30_000);
+  const { invites: inviteMeetings, unseenCount } = useInviteBadge();
 
   useEffect(() => {
     dispatch(fetchMeetingsRequest());
@@ -74,10 +88,15 @@ export default function DashboardPage() {
     }
   }, [newlyCreatedMeeting, dispatch, router]);
 
-  const handleCreateInstant = () => {
+  const handleStartInstant = (emails: string[]) => {
     const title = `${user?.displayName}'s Meeting`;
     pendingActionRef.current = 'instant';
-    dispatch(createMeetingRequest({ title }));
+    dispatch(createMeetingRequest({
+      title,
+      inviteeEmails: emails.length > 0 ? emails : undefined,
+    }));
+    setShowInstantModal(false);
+    setInstantEmails([]);
   };
 
   const handleCreateScheduled = () => {
@@ -87,11 +106,13 @@ export default function DashboardPage() {
       title: meetingTitle,
       description: meetingDescription || undefined,
       scheduledAt: scheduledAt || undefined,
+      inviteeEmails: inviteeEmails.length > 0 ? inviteeEmails : undefined,
     }));
     setShowCreateModal(false);
     setMeetingTitle('');
     setMeetingDescription('');
     setScheduledAt('');
+    setInviteeEmails([]);
   };
 
   const handleJoinMeeting = () => {
@@ -124,7 +145,7 @@ export default function DashboardPage() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'ACTIVE': return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+      case 'ACTIVE':
       case 'SCHEDULED': return 'border-brand-200 bg-brand-50 text-brand-700';
       case 'ENDED': return 'border-mist-300 bg-mist-100 text-ink-400';
       case 'CANCELLED': return 'border-red-200 bg-red-50 text-red-700';
@@ -167,10 +188,94 @@ export default function DashboardPage() {
           <p className="mt-1 text-sm text-ink-400">Start or join a meeting to collaborate with your team.</p>
         </div>
 
+        {/* Invited to You */}
+        {inviteMeetings.length > 0 && (
+          <div className="mb-8 rounded-2xl border border-violet-200 bg-violet-50/60 p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="rounded-xl bg-violet-100 p-2">
+                  <Inbox className="h-5 w-5 text-violet-700" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-bold text-ink-900">Invited to you</h3>
+                    {unseenCount > 0 && (
+                      <span className="inline-flex items-center rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white">
+                        {unseenCount} new
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-ink-400">
+                    Meetings other people have invited you to.
+                  </p>
+                </div>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => router.push('/meetings')}>
+                View all <ArrowRight className="ml-1 h-4 w-4" />
+              </Button>
+            </div>
+            <div className="grid gap-2">
+              {inviteMeetings.slice(0, 3).map((meeting) => {
+                const status = getMeetingStatus(meeting, now);
+                const isLocked = status.derived === 'UPCOMING';
+                const canJoin = status.derived === 'LIVE' || status.derived === 'READY';
+                return (
+                  <div
+                    key={meeting.id}
+                    className="flex items-center gap-3 rounded-xl border border-violet-100 bg-white p-3"
+                  >
+                    <div className="flex-shrink-0 rounded-lg bg-violet-100 p-2">
+                      <Video className="h-4 w-4 text-violet-700" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <h4 className="truncate text-sm font-semibold text-ink-900">{meeting.title}</h4>
+                        <span
+                          className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusBadgeClasses(status.derived)}`}
+                        >
+                          {status.label}
+                          {status.derived === 'UPCOMING' && status.msUntilStart != null && (
+                            <span className="ml-1 font-normal">· {formatCountdown(status.msUntilStart)}</span>
+                          )}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-xs text-ink-400">
+                        {meeting.owner?.displayName && (
+                          <>by <span className="font-semibold text-ink-700">{meeting.owner.displayName}</span> · </>
+                        )}
+                        {meeting.scheduledAt
+                          ? formatDate(meeting.scheduledAt)
+                          : formatDate(meeting.createdAt)}
+                      </p>
+                    </div>
+                    {canJoin ? (
+                      <button
+                        onClick={() => router.push(`/meeting/${meeting.code}`)}
+                        className="flex flex-shrink-0 items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-brand-700"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        Join
+                      </button>
+                    ) : isLocked ? (
+                      <span
+                        title={status.msUntilStart != null ? `Available ${formatCountdown(status.msUntilStart)}` : undefined}
+                        className="inline-flex flex-shrink-0 cursor-not-allowed items-center gap-1 rounded-lg border border-mist-300 bg-mist-100 px-2.5 py-1.5 text-xs font-semibold text-ink-400"
+                      >
+                        <Lock className="h-3 w-3" />
+                        {status.msUntilStart != null ? formatCountdown(status.msUntilStart) : 'Locked'}
+                      </span>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Quick Actions */}
         <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
           <button
-            onClick={handleCreateInstant}
+            onClick={() => setShowInstantModal(true)}
             disabled={isLoading}
             className="group flex items-center gap-4 rounded-2xl bg-brand-600 p-5 text-white shadow-soft transition-all duration-200 hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
@@ -246,7 +351,12 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div className="grid gap-3">
-              {meetings.slice(0, 5).map((meeting: Meeting) => (
+              {meetings.slice(0, 5).map((meeting: Meeting) => {
+                const status = getMeetingStatus(meeting, now);
+                const isHost = meeting.ownerId === user?.id;
+                const isLocked = status.derived === 'UPCOMING' && !isHost;
+                const canJoin = status.derived === 'LIVE' || status.derived === 'READY' || (status.derived === 'UPCOMING' && isHost);
+                return (
                 <div
                   key={meeting.id}
                   className="surface-card flex items-center justify-between p-4 transition-all duration-200 hover:border-brand-200"
@@ -256,24 +366,44 @@ export default function DashboardPage() {
                       <Video className="h-5 w-5 text-brand-600" />
                     </div>
                     <div className="min-w-0">
-                      <h4 className="truncate font-semibold text-ink-900">{meeting.title}</h4>
+                      <div className="flex items-center gap-2">
+                        <h4 className="truncate font-semibold text-ink-900">{meeting.title}</h4>
+                        {!isHost && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-semibold text-violet-700">
+                            <Mail className="h-3 w-3" /> Invited
+                          </span>
+                        )}
+                      </div>
                       <div className="mt-1 flex items-center gap-3 text-sm text-ink-400">
-                        <span className="flex items-center gap-1">
-                          <Clock className="h-3.5 w-3.5" />
-                          {formatDate(meeting.createdAt)}
-                        </span>
+                        {meeting.scheduledAt ? (
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3.5 w-3.5" />
+                            {formatDate(meeting.scheduledAt)}
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3.5 w-3.5" />
+                            {formatDate(meeting.createdAt)}
+                          </span>
+                        )}
                         <span className="flex items-center gap-1">
                           <Users className="h-3.5 w-3.5" />
                           {meeting.participants?.length || 0}
                         </span>
+                        {!isHost && meeting.owner?.displayName && (
+                          <span>by <span className="font-semibold text-ink-700">{meeting.owner.displayName}</span></span>
+                        )}
                         <code className="rounded bg-mist-100 px-1.5 py-0.5 text-xs font-semibold text-ink-700">{meeting.code}</code>
                       </div>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2 ml-4 flex-shrink-0">
-                    <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${getStatusColor(meeting.status)}`}>
-                      {meeting.status}
+                    <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${statusBadgeClasses(status.derived)}`}>
+                      {status.label}
+                      {status.derived === 'UPCOMING' && status.msUntilStart != null && (
+                        <span className="ml-1 font-normal">· {formatCountdown(status.msUntilStart)}</span>
+                      )}
                     </span>
                     <button
                       onClick={() => copyToClipboard(getMeetingLink(meeting.code), meeting.id)}
@@ -282,7 +412,15 @@ export default function DashboardPage() {
                     >
                       {copiedCode === meeting.id ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
                     </button>
-                    {(meeting.status === 'ACTIVE' || meeting.status === 'SCHEDULED') && (
+                    {isLocked && (
+                      <span
+                        title={`Available ${status.msUntilStart != null ? formatCountdown(status.msUntilStart) : 'soon'}`}
+                        className="inline-flex cursor-not-allowed items-center gap-1 rounded-lg border border-mist-300 bg-mist-100 px-2 py-1 text-xs font-semibold text-ink-400"
+                      >
+                        <Lock className="h-3 w-3" />
+                      </span>
+                    )}
+                    {canJoin && (
                       <button
                         onClick={() => router.push(`/meeting/${meeting.code}`)}
                         title="Join meeting"
@@ -293,7 +431,8 @@ export default function DashboardPage() {
                     )}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -332,12 +471,59 @@ export default function DashboardPage() {
               className="w-full rounded-xl border border-mist-300 bg-white px-4 py-2.5 text-sm text-ink-800 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/70"
             />
           </div>
+          <EmailChipInput
+            label="Invite people (optional)"
+            emails={inviteeEmails}
+            onChange={setInviteeEmails}
+            placeholder="Add emails to invite..."
+          />
           <div className="flex gap-3 pt-2">
             <Button variant="outline" onClick={() => setShowCreateModal(false)} className="flex-1">
               Cancel
             </Button>
             <Button onClick={handleCreateScheduled} className="flex-1" disabled={!meetingTitle.trim() || isLoading}>
               {isLoading ? 'Creating...' : 'Create Meeting'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Instant Meeting Modal */}
+      <Modal
+        isOpen={showInstantModal}
+        onClose={() => {
+          setShowInstantModal(false);
+          setInstantEmails([]);
+        }}
+        title="Start a meeting"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-ink-400">
+            Your meeting will start right away. Add people to email them the join link.
+          </p>
+          <EmailChipInput
+            label="Invite people (optional)"
+            emails={instantEmails}
+            onChange={setInstantEmails}
+            placeholder="Add emails to invite..."
+          />
+          <div className="flex gap-3 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowInstantModal(false);
+                setInstantEmails([]);
+              }}
+              className="flex-1"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => handleStartInstant(instantEmails)}
+              className="flex-1"
+              disabled={isLoading}
+            >
+              {isLoading ? 'Starting...' : 'Start now'}
             </Button>
           </div>
         </div>

@@ -12,6 +12,12 @@ class WebRTCService {
   private peerConnections: PeerConnectionMap = new Map();
   private iceServers: IceServer[] = [];
 
+  // Recording state
+  private mediaRecorder: MediaRecorder | null = null;
+  private recordedChunks: Blob[] = [];
+  private recordingStartedAt: Date | null = null;
+  private onRecordingAvailable: ((blob: Blob, startedAt: Date) => void) | null = null;
+
   // Callbacks
   private onRemoteStream: ((userId: string, stream: MediaStream) => void) | null = null;
   private onRemoteStreamRemoved: ((userId: string) => void) | null = null;
@@ -228,6 +234,50 @@ class WebRTCService {
 
     this.onRemoteStream = null;
     this.onRemoteStreamRemoved = null;
+  }
+
+  setOnRecordingAvailable(callback: (blob: Blob, startedAt: Date) => void) {
+    this.onRecordingAvailable = callback;
+  }
+
+  startRecording(): boolean {
+    const stream = this.localStream;
+    if (!stream) return false;
+
+    const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
+      ? 'video/webm;codecs=vp9,opus'
+      : 'video/webm';
+
+    this.recordedChunks = [];
+    this.recordingStartedAt = new Date();
+    this.mediaRecorder = new MediaRecorder(stream, { mimeType });
+
+    this.mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) this.recordedChunks.push(e.data);
+    };
+
+    this.mediaRecorder.onstop = () => {
+      const blob = new Blob(this.recordedChunks, { type: mimeType });
+      if (this.onRecordingAvailable && this.recordingStartedAt) {
+        this.onRecordingAvailable(blob, this.recordingStartedAt);
+      }
+      this.recordedChunks = [];
+      this.recordingStartedAt = null;
+    };
+
+    this.mediaRecorder.start(1000); // collect chunks every 1s
+    return true;
+  }
+
+  stopRecording() {
+    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+      this.mediaRecorder.stop();
+      this.mediaRecorder = null;
+    }
+  }
+
+  isRecording(): boolean {
+    return this.mediaRecorder?.state === 'recording';
   }
 
   getLocalStreamRef(): MediaStream | null {

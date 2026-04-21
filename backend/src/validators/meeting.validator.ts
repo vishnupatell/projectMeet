@@ -25,6 +25,7 @@ export const createMeetingSchema = z.object({
   description: z.string().max(1000).optional(),
   scheduledAt: scheduledAtSchema,
   maxParticipants: z.number().int().min(2).max(500).optional(),
+  inviteeEmails: z.array(z.string().email('Invalid email')).max(100).optional(),
 });
 
 export const joinMeetingSchema = z.object({

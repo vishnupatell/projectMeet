@@ -82,6 +82,9 @@ services:
       TURN_USERNAME: ${TURN_USERNAME}
       TURN_PASSWORD: ${TURN_PASSWORD}
       STUN_SERVER_URL: ${STUN_SERVER_URL}
+      RECORDINGS_DIR: ${RECORDINGS_DIR:-/app/recordings}
+      AI_SERVICE_URL: ${AI_SERVICE_URL:-http://ai-service:8000}
+      AI_RECORDINGS_PATH: ${AI_RECORDINGS_PATH:-/recordings}
     depends_on:
       postgres:
         condition: service_healthy
@@ -90,6 +93,46 @@ services:
     volumes:
       - ./backend:/app
       - /app/node_modules
+      - recordings_data:/app/recordings
+    networks:
+      - projectmeet-network
+
+  # ============================================
+  # Ollama (local LLM for summarization)
+  # ============================================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: projectmeet-ollama
+    restart: unless-stopped
+    ports:
+      - "11435:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - projectmeet-network
+
+  # ============================================
+  # AI Service (Whisper transcription + Ollama summarization)
+  # ============================================
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    container_name: projectmeet-ai
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    environment:
+      WHISPER_MODEL: base
+      WHISPER_DEVICE: cpu
+      WHISPER_COMPUTE_TYPE: int8
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: llama3.2:3b
+    volumes:
+      - recordings_data:/recordings
+      - whisper_models:/root/.cache/huggingface
+    depends_on:
+      - ollama
     networks:
       - projectmeet-network
 
@@ -121,6 +164,12 @@ volumes:
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  ollama_data:
+    driver: local
+  whisper_models:
+    driver: local
+  recordings_data:
     driver: local
 
 networks:
