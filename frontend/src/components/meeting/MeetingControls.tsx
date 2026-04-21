@@ -11,19 +11,24 @@ import {
   Phone,
   MessageSquare,
   Users,
+  CircleDot,
+  StopCircle,
 } from 'lucide-react';
 
 interface MeetingControlsProps {
-  isAudioOn: boolean;
-  isVideoOn: boolean;
-  isScreenSharing: boolean;
-  isChatOpen: boolean;
-  participantCount: number;
-  onToggleAudio: () => void;
-  onToggleVideo: () => void;
-  onToggleScreenShare: () => void;
-  onToggleChat: () => void;
-  onLeaveMeeting: () => void;
+  readonly isAudioOn: boolean;
+  readonly isVideoOn: boolean;
+  readonly isScreenSharing: boolean;
+  readonly isChatOpen: boolean;
+  readonly isRecording: boolean;
+  readonly isUploadingRecording: boolean;
+  readonly participantCount: number;
+  readonly onToggleAudio: () => void;
+  readonly onToggleVideo: () => void;
+  readonly onToggleScreenShare: () => void;
+  readonly onToggleChat: () => void;
+  readonly onToggleRecording: () => void;
+  readonly onLeaveMeeting: () => void;
 }
 
 export function MeetingControls({
@@ -31,11 +36,14 @@ export function MeetingControls({
   isVideoOn,
   isScreenSharing,
   isChatOpen,
+  isRecording,
+  isUploadingRecording,
   participantCount,
   onToggleAudio,
   onToggleVideo,
   onToggleScreenShare,
   onToggleChat,
+  onToggleRecording,
   onLeaveMeeting,
 }: MeetingControlsProps) {
   return (
@@ -81,6 +89,29 @@ export function MeetingControls({
       >
         {isScreenSharing ? <MonitorOff className="h-5 w-5" /> : <Monitor className="h-5 w-5" />}
       </button>
+
+      {/* Recording */}
+      {(() => {
+        let recordingTitle = 'Start recording';
+        if (isUploadingRecording) recordingTitle = 'Saving recording...';
+        else if (isRecording) recordingTitle = 'Stop recording';
+        return (
+          <button
+            onClick={onToggleRecording}
+            disabled={isUploadingRecording}
+            className={clsx(
+              'rounded-full p-3 transition-all duration-200',
+              isRecording
+                ? 'animate-pulse bg-red-500 text-white hover:bg-red-600'
+                : 'bg-white/15 text-white hover:bg-white/25',
+              isUploadingRecording && 'cursor-not-allowed opacity-50',
+            )}
+            title={recordingTitle}
+          >
+            {isRecording ? <StopCircle className="h-5 w-5" /> : <CircleDot className="h-5 w-5" />}
+          </button>
+        );
+      })()}
 
       {/* Chat */}
       <button

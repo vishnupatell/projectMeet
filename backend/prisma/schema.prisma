@@ -33,6 +33,7 @@ model User {
   participants  MeetingParticipant[]
   messages      Message[]
   chatMembers   ChatMember[]
+  recordings    Recording[]
 
   @@map("users")
 }
@@ -80,11 +81,40 @@ model Meeting {
 
   owner        User                 @relation("MeetingOwner", fields: [ownerId], references: [id])
   participants MeetingParticipant[]
+  invitations  MeetingInvitation[]
   chat         Chat?
+  recordings   Recording[]
 
   @@index([code])
   @@index([ownerId])
   @@map("meetings")
+}
+
+// ============================================
+// MeetingInvitation (pre-meeting email invites)
+// ============================================
+model MeetingInvitation {
+  id         String           @id @default(uuid())
+  meetingId  String           @map("meeting_id")
+  email      String
+  status     InvitationStatus @default(PENDING)
+  sentAt     DateTime?        @map("sent_at")
+  errorMsg   String?          @map("error_msg")
+  createdAt  DateTime         @default(now()) @map("created_at")
+  updatedAt  DateTime         @updatedAt @map("updated_at")
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, email])
+  @@index([meetingId])
+  @@index([email])
+  @@map("meeting_invitations")
+}
+
+enum InvitationStatus {
+  PENDING
+  SENT
+  FAILED
 }
 
 enum MeetingStatus {
@@ -187,4 +217,66 @@ enum MessageType {
   TEXT
   SYSTEM
   FILE
+}
+
+// ============================================
+// Recording
+// ============================================
+model Recording {
+  id          String          @id @default(uuid())
+  meetingId   String          @map("meeting_id")
+  recordedById String         @map("recorded_by_id")
+  filename    String
+  filePath    String          @map("file_path")
+  fileSize    BigInt          @default(0) @map("file_size")
+  duration    Int             @default(0) // seconds
+  mimeType    String          @default("video/webm") @map("mime_type")
+  status      RecordingStatus @default(PROCESSING)
+  startedAt   DateTime        @map("started_at")
+  endedAt     DateTime?       @map("ended_at")
+  createdAt   DateTime        @default(now()) @map("created_at")
+
+  meeting     Meeting    @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  recordedBy  User       @relation(fields: [recordedById], references: [id], onDelete: Cascade)
+  transcript  Transcript?
+
+  @@index([meetingId])
+  @@index([recordedById])
+  @@map("recordings")
+}
+
+enum RecordingStatus {
+  PROCESSING
+  READY
+  FAILED
+}
+
+// ============================================
+// Transcript (per-recording transcription + AI summary)
+// ============================================
+model Transcript {
+  id          String           @id @default(uuid())
+  recordingId String           @unique @map("recording_id")
+  status      TranscriptStatus @default(PENDING)
+  language    String?
+  fullText    String?          @map("full_text") @db.Text
+  segments    Json?
+  summary     String?          @db.Text
+  keyPoints   Json?            @map("key_points")
+  errorMsg    String?          @map("error_msg")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  recording Recording @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+
+  @@index([recordingId])
+  @@map("transcripts")
+}
+
+enum TranscriptStatus {
+  PENDING
+  TRANSCRIBING
+  SUMMARIZING
+  READY
+  FAILED
 }

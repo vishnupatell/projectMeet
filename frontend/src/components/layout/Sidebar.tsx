@@ -15,17 +15,19 @@ import { selectUser } from '@/store/selectors/authSelectors';
 import { logoutRequest } from '@/store/slices/authSlice';
 import { Avatar } from '../ui/Avatar';
 import { APP_NAME } from '@/lib/config';
+import { useInviteBadge } from '@/lib/hooks/useInviteBadge';
 
 const navItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/meetings', label: 'Meetings', icon: Calendar },
-  { href: '/settings', label: 'Settings', icon: Settings },
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, key: 'dashboard' as const },
+  { href: '/meetings', label: 'Meetings', icon: Calendar, key: 'meetings' as const },
+  { href: '/settings', label: 'Settings', icon: Settings, key: 'settings' as const },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
   const dispatch = useAppDispatch();
   const user = useAppSelector(selectUser);
+  const { unseenCount } = useInviteBadge();
 
   return (
     <aside className="sticky top-0 flex h-screen w-72 flex-col border-r border-mist-200 bg-[linear-gradient(180deg,#0F2A33_0%,#0B404D_100%)] text-slate-100 shadow-glass">
@@ -42,6 +44,7 @@ export function Sidebar() {
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href;
+          const showBadge = item.key === 'meetings' && unseenCount > 0;
           return (
             <Link
               key={item.href}
@@ -53,8 +56,24 @@ export function Sidebar() {
                   : 'text-slate-200/90 hover:bg-white/10 hover:text-white',
               )}
             >
-              <Icon className="h-5 w-5" />
-              {item.label}
+              <span className="relative inline-flex">
+                <Icon className="h-5 w-5" />
+                {showBadge && (
+                  <span
+                    className="absolute -right-1.5 -top-1.5 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-[#0F2A33]"
+                    aria-hidden
+                  />
+                )}
+              </span>
+              <span className="flex-1">{item.label}</span>
+              {showBadge && (
+                <span
+                  className="inline-flex min-w-[1.5rem] items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-xs font-bold text-white"
+                  aria-label={`${unseenCount} new invitation${unseenCount === 1 ? '' : 's'}`}
+                >
+                  {unseenCount > 9 ? '9+' : unseenCount}
+                </span>
+              )}
             </Link>
           );
         })}

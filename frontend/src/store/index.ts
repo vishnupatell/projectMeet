@@ -3,6 +3,7 @@ import createSagaMiddleware from 'redux-saga';
 import authReducer from './slices/authSlice';
 import meetingReducer from './slices/meetingSlice';
 import chatReducer from './slices/chatSlice';
+import recordingReducer from './slices/recordingSlice';
 import rootSaga from './sagas';
 
 const sagaMiddleware = createSagaMiddleware();
@@ -12,6 +13,7 @@ export const store = configureStore({
     auth: authReducer,
     meeting: meetingReducer,
     chat: chatReducer,
+    recording: recordingReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

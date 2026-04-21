@@ -112,7 +112,12 @@ class ApiClient {
   }
 
   // Meetings
-  async createMeeting(title: string, description?: string, scheduledAt?: string) {
+  async createMeeting(
+    title: string,
+    description?: string,
+    scheduledAt?: string,
+    inviteeEmails?: string[],
+  ) {
     const normalizedScheduledAt = this.normalizeScheduledAt(scheduledAt);
 
     return this.request<any>('/meetings', {
@@ -121,6 +126,8 @@ class ApiClient {
         title,
         description,
         scheduledAt: normalizedScheduledAt,
+        inviteeEmails:
+          inviteeEmails && inviteeEmails.length > 0 ? inviteeEmails : undefined,
       }),
     });
   }
@@ -186,6 +193,58 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify({ chatId, content }),
     });
+  }
+
+  // Recordings
+  async uploadRecording(blob: Blob, meetingId: string, startedAt: string) {
+    const token = this.getToken();
+    const formData = new FormData();
+    const ext = blob.type.includes('webm') ? '.webm' : '.mp4';
+    formData.append('recording', blob, `recording${ext}`);
+    formData.append('meetingId', meetingId);
+    formData.append('startedAt', startedAt);
+
+    const response = await fetch(`${this.baseUrl}/recordings/upload`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+    const data = await response.json();
+    if (!response.ok) throw data;
+    return data;
+  }
+
+  async getMyRecordings() {
+    return this.request<any>('/recordings/my');
+  }
+
+  async getMeetingRecordings(meetingId: string) {
+    return this.request<any>(`/recordings/meeting/${meetingId}`);
+  }
+
+  async deleteRecording(recordingId: string) {
+    return this.request<any>(`/recordings/${recordingId}`, { method: 'DELETE' });
+  }
+
+  getRecordingDownloadUrl(recordingId: string): string {
+    const token = this.getToken();
+    const query = token ? `?token=${token}` : '';
+    return `${this.baseUrl}/recordings/${recordingId}/download${query}`;
+  }
+
+  // Transcripts
+  async getTranscriptByRecording(recordingId: string) {
+    return this.request<any>(`/transcripts/recording/${recordingId}`);
+  }
+
+  async generateTranscript(recordingId: string) {
+    return this.request<any>(`/transcripts/recording/${recordingId}/generate`, {
+      method: 'POST',
+    });
+  }
+
+  async getMeetingTranscripts(meetingId: string) {
+    return this.request<any>(`/transcripts/meeting/${meetingId}`);
   }
 }
 

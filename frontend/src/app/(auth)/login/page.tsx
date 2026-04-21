@@ -9,6 +9,7 @@ import { loginRequest, clearError } from '@/store/slices/authSlice';
 import { selectIsAuthenticated, selectAuthLoading, selectAuthError } from '@/store/selectors/authSelectors';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { PasswordInput } from '@/components/ui/PasswordInput';
 import { APP_NAME } from '@/lib/config';
 
 export default function LoginPage() {
@@ -71,9 +72,8 @@ export default function LoginPage() {
             required
           />
 
-          <Input
+          <PasswordInput
             label="Password"
-            type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Enter your password"

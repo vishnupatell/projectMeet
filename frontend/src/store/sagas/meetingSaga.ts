@@ -28,15 +28,21 @@ function* handleFetchMeetings(): Generator<any, void, any> {
 }
 
 function* handleCreateMeeting(
-  action: PayloadAction<{ title: string; description?: string; scheduledAt?: string }>,
+  action: PayloadAction<{
+    title: string;
+    description?: string;
+    scheduledAt?: string;
+    inviteeEmails?: string[];
+  }>,
 ): Generator<any, void, any> {
   try {
-    const { title, description, scheduledAt } = action.payload;
+    const { title, description, scheduledAt, inviteeEmails } = action.payload;
     const response = yield call(
       [apiClient, apiClient.createMeeting],
       title,
       description,
       scheduledAt,
+      inviteeEmails,
     );
     yield put(createMeetingSuccess(response.data));
   } catch (error: any) {

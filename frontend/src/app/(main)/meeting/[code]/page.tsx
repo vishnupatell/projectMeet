@@ -16,6 +16,7 @@ import { VideoTile } from '@/components/meeting/VideoTile';
 import { MeetingControls } from '@/components/meeting/MeetingControls';
 import { MeetingChat } from '@/components/chat/MeetingChat';
 import { AuthGuard } from '@/components/auth/AuthGuard';
+import { PanelLeftClose, PanelLeftOpen, Maximize, Minimize } from 'lucide-react';
 
 interface RemoteStream {
   userId: string;
@@ -42,7 +43,32 @@ export default function MeetingRoomPage() {
   const [remoteStreams, setRemoteStreams] = useState<RemoteStream[]>([]);
   const [isJoining, setIsJoining] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isImmersive, setIsImmersive] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const joinedRef = useRef(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  const handleToggleImmersive = useCallback(() => {
+    setIsImmersive((v) => !v);
+  }, []);
+
+  const handleToggleFullscreen = useCallback(async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else if (rootRef.current) {
+        await rootRef.current.requestFullscreen();
+      }
+    } catch (err) {
+      console.error('Fullscreen error:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
 
   // Initialize meeting
   useEffect(() => {
@@ -273,12 +299,26 @@ export default function MeetingRoomPage() {
 
   return (
     <AuthGuard>
-      <div className="flex h-screen bg-[radial-gradient(circle_at_35%_0%,#164553_0%,#0D161A_55%)]">
+      <div
+        ref={rootRef}
+        className={
+          isImmersive
+            ? 'fixed inset-0 z-50 flex h-screen w-screen bg-[radial-gradient(circle_at_35%_0%,#164553_0%,#0D161A_55%)]'
+            : 'flex h-full min-h-0 bg-[radial-gradient(circle_at_35%_0%,#164553_0%,#0D161A_55%)]'
+        }
+      >
         {/* Video Grid */}
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col min-h-0 min-w-0">
           {/* Meeting info bar */}
           <div className="flex items-center justify-between border-b border-white/10 bg-ink-900/45 px-4 py-2.5 backdrop-blur">
             <div className="flex items-center gap-3">
+              <button
+                onClick={handleToggleImmersive}
+                className="rounded-lg p-1.5 text-slate-200 transition-colors hover:bg-white/10 hover:text-white"
+                title={isImmersive ? 'Show sidebar' : 'Hide sidebar'}
+              >
+                {isImmersive ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+              </button>
               <h2 className="text-sm font-semibold text-white">
                 {currentMeeting?.title || 'Meeting'}
               </h2>
@@ -286,13 +326,22 @@ export default function MeetingRoomPage() {
                 {code}
               </span>
             </div>
-            <div className="text-xs font-medium text-slate-200/85">
-              {participants.length + 1} participant{participants.length !== 0 ? 's' : ''}
+            <div className="flex items-center gap-3">
+              <div className="text-xs font-medium text-slate-200/85">
+                {participants.length + 1} participant{participants.length !== 0 ? 's' : ''}
+              </div>
+              <button
+                onClick={handleToggleFullscreen}
+                className="rounded-lg p-1.5 text-slate-200 transition-colors hover:bg-white/10 hover:text-white"
+                title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+              >
+                {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+              </button>
             </div>
           </div>
 
           {/* Video tiles */}
-          <div className={`flex-1 p-4 grid ${getGridClass()} gap-3 auto-rows-fr`}>
+          <div className={`flex-1 min-h-0 overflow-hidden p-4 grid ${getGridClass()} gap-3 auto-rows-fr`}>
             {allStreams.map((s) => (
               <VideoTile
                 key={s.userId}
@@ -302,7 +351,7 @@ export default function MeetingRoomPage() {
                 isAudioOn={s.isLocal ? isAudioOn : (participants.find(p => p.userId === s.userId)?.isAudioOn ?? true)}
                 isVideoOn={s.isLocal ? isVideoOn : (participants.find(p => p.userId === s.userId)?.isVideoOn ?? true)}
                 isLocal={s.isLocal}
-                className="min-h-[200px]"
+                className="min-h-0"
               />
             ))}
           </div>

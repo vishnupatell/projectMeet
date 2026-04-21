@@ -10,12 +10,15 @@ import {
   Copy,
   Check,
   ExternalLink,
+  FileText,
   StopCircle,
   ChevronDown,
   ChevronUp,
   Trash2,
   AlertCircle,
   X,
+  Lock,
+  Mail,
 } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '@/lib/hooks/useStore';
 import {
@@ -33,6 +36,14 @@ import { selectUser } from '@/store/selectors/authSelectors';
 import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
+import {
+  getMeetingStatus,
+  formatCountdown,
+  statusBadgeClasses,
+  type DerivedStatus,
+} from '@/lib/meetingStatus';
+import { useNow } from '@/lib/hooks/useNow';
+import { useInviteBadge } from '@/lib/hooks/useInviteBadge';
 import type { Meeting } from '@/types';
 
 export default function MeetingsPage() {
@@ -47,11 +58,19 @@ export default function MeetingsPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [confirmEndId, setConfirmEndId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const [filterStatus, setFilterStatus] = useState<string>('ALL');
+  const [filterStatus, setFilterStatus] = useState<DerivedStatus | 'ALL' | 'INVITED'>('ALL');
+
+  const now = useNow(30_000);
+  const { markSeen } = useInviteBadge();
 
   useEffect(() => {
     dispatch(fetchMeetingsRequest());
   }, [dispatch]);
+
+  // Clear the "new invites" badge once the user visits this page.
+  useEffect(() => {
+    markSeen();
+  }, [markSeen]);
 
   const getMeetingLink = (code: string) =>
     typeof window !== 'undefined' ? `${window.location.origin}/meeting/${code}` : `/meeting/${code}`;
@@ -71,21 +90,6 @@ export default function MeetingsPage() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'ACTIVE':
-        return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-      case 'SCHEDULED':
-        return 'border-brand-200 bg-brand-50 text-brand-700';
-      case 'ENDED':
-        return 'border-mist-300 bg-mist-100 text-ink-400';
-      case 'CANCELLED':
-        return 'border-red-200 bg-red-50 text-red-700';
-      default:
-        return 'border-mist-300 bg-mist-100 text-ink-400';
-    }
-  };
-
   const formatDate = (dateStr: string) =>
     new Date(dateStr).toLocaleDateString(undefined, {
       weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -102,8 +106,35 @@ export default function MeetingsPage() {
     setConfirmDeleteId(null);
   };
 
-  const filtered = filterStatus === 'ALL' ? meetings : meetings.filter((m) => m.status === filterStatus);
-  const statusFilters = ['ALL', 'ACTIVE', 'SCHEDULED', 'ENDED', 'CANCELLED'];
+  const decorated = meetings.map((m) => ({
+    meeting: m,
+    status: getMeetingStatus(m, now),
+    isHost: m.ownerId === user?.id,
+  }));
+
+  const counts = {
+    ALL: decorated.length,
+    LIVE: decorated.filter((d) => d.status.derived === 'LIVE').length,
+    UPCOMING: decorated.filter((d) => d.status.derived === 'UPCOMING').length,
+    READY: decorated.filter((d) => d.status.derived === 'READY').length,
+    ENDED: decorated.filter((d) => d.status.derived === 'ENDED').length,
+    INVITED: decorated.filter((d) => !d.isHost).length,
+  };
+
+  const filtered = decorated.filter((d) => {
+    if (filterStatus === 'ALL') return true;
+    if (filterStatus === 'INVITED') return !d.isHost;
+    return d.status.derived === filterStatus;
+  });
+
+  const statusFilters: { key: typeof filterStatus; label: string; count: number }[] = [
+    { key: 'ALL', label: 'All', count: counts.ALL },
+    { key: 'LIVE', label: 'Live', count: counts.LIVE },
+    { key: 'UPCOMING', label: 'Upcoming', count: counts.UPCOMING },
+    { key: 'READY', label: 'Ready', count: counts.READY },
+    { key: 'INVITED', label: 'Invited to me', count: counts.INVITED },
+    { key: 'ENDED', label: 'Ended', count: counts.ENDED },
+  ];
 
   return (
     <div>
@@ -121,15 +152,15 @@ export default function MeetingsPage() {
         <div className="mb-5 flex flex-wrap items-center gap-2">
           {statusFilters.map((s) => (
             <button
-              key={s}
-              onClick={() => setFilterStatus(s)}
+              key={s.key}
+              onClick={() => setFilterStatus(s.key)}
               className={`rounded-xl px-3 py-1.5 text-sm font-semibold transition-colors ${
-                filterStatus === s
+                filterStatus === s.key
                   ? 'bg-brand-600 text-white'
                   : 'border border-mist-300 bg-white text-ink-500 hover:border-brand-200'
               }`}
             >
-              {s === 'ALL' ? `All (${meetings.length})` : `${s} (${meetings.filter((m) => m.status === s).length})`}
+              {s.label} ({s.count})
             </button>
           ))}
           <Button variant="outline" size="sm" onClick={() => dispatch(fetchMeetingsRequest())} className="ml-auto">
@@ -143,19 +174,38 @@ export default function MeetingsPage() {
           </div>
         ) : filtered.length === 0 ? (
           <div className="py-20 text-center">
-            <Calendar className="mx-auto mb-4 h-16 w-16 text-mist-300" />
-            <h3 className="text-lg font-bold text-ink-700">No meetings found</h3>
-            <p className="mt-1 text-ink-400">
-              {filterStatus === 'ALL' ? 'Meetings you create or join will appear here' : `No ${filterStatus.toLowerCase()} meetings`}
-            </p>
+            {filterStatus === 'INVITED' ? (
+              <>
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-violet-100">
+                  <Mail className="h-8 w-8 text-violet-600" />
+                </div>
+                <h3 className="text-lg font-bold text-ink-700">No invitations yet</h3>
+                <p className="mt-1 text-ink-400">
+                  When someone invites you to a meeting, it will show up here automatically.
+                </p>
+              </>
+            ) : (
+              <>
+                <Calendar className="mx-auto mb-4 h-16 w-16 text-mist-300" />
+                <h3 className="text-lg font-bold text-ink-700">No meetings found</h3>
+                <p className="mt-1 text-ink-400">
+                  {filterStatus === 'ALL'
+                    ? 'Meetings you create or join will appear here'
+                    : `No ${String(filterStatus).toLowerCase()} meetings`}
+                </p>
+              </>
+            )}
           </div>
         ) : (
           <div className="space-y-3">
-            {filtered.map((meeting: Meeting) => {
+            {filtered.map(({ meeting, status, isHost }) => {
               const isExpanded = expandedId === meeting.id;
-              const isHost = meeting.ownerId === user?.id;
-              const canJoin = meeting.status === 'ACTIVE' || meeting.status === 'SCHEDULED';
-              const canEnd = meeting.status === 'ACTIVE' && isHost;
+              // Hosts can always start/join a SCHEDULED meeting (override the gate).
+              // Non-hosts must wait until the scheduled time.
+              const isLocked = status.derived === 'UPCOMING' && !isHost;
+              const canJoin = status.derived === 'LIVE' || status.derived === 'READY' || (status.derived === 'UPCOMING' && isHost);
+              const canEnd = status.derived === 'LIVE' && isHost;
+              const joinLabel = status.derived === 'LIVE' ? 'Join' : 'Start';
 
               return (
                 <div key={meeting.id} className="surface-card overflow-hidden transition-shadow">
@@ -166,18 +216,34 @@ export default function MeetingsPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-3">
                         <h4 className="truncate font-semibold text-ink-900">{meeting.title}</h4>
-                        <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${getStatusColor(meeting.status)}`}>
-                          {meeting.status}
+                        <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${statusBadgeClasses(status.derived)}`}>
+                          {status.label}
+                          {status.derived === 'UPCOMING' && status.msUntilStart != null && (
+                            <span className="ml-1 font-normal">· {formatCountdown(status.msUntilStart)}</span>
+                          )}
                         </span>
-                        {isHost && (
+                        {isHost ? (
                           <span className="rounded-full bg-cyan-100 px-2 py-0.5 text-xs font-semibold text-cyan-700">Host</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-semibold text-violet-700">
+                            <Mail className="h-3 w-3" /> Invited
+                          </span>
                         )}
                       </div>
                       <div className="mt-1.5 flex flex-wrap items-center gap-4 text-sm text-ink-400">
-                        <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" />{formatDate(meeting.createdAt)}</span>
+                        {meeting.scheduledAt ? (
+                          <span className="flex items-center gap-1">
+                            <Calendar className="h-3.5 w-3.5" />Scheduled {formatDate(meeting.scheduledAt)}
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" />{formatDate(meeting.createdAt)}</span>
+                        )}
                         <span className="flex items-center gap-1">
                           <Users className="h-3.5 w-3.5" />{meeting.participants?.length || 0} participant{(meeting.participants?.length || 0) !== 1 ? 's' : ''}
                         </span>
+                        {!isHost && meeting.owner?.displayName && (
+                          <span className="text-ink-500">Invited by <span className="font-semibold text-ink-700">{meeting.owner.displayName}</span></span>
+                        )}
                         <code className="rounded bg-mist-100 px-1.5 py-0.5 font-mono text-xs text-ink-700">{meeting.code}</code>
                       </div>
                     </div>
@@ -196,7 +262,17 @@ export default function MeetingsPage() {
                           className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-brand-700"
                         >
                           <ExternalLink className="h-3.5 w-3.5" />
-                          {meeting.status === 'ACTIVE' ? 'Join' : 'Start'}
+                          {joinLabel}
+                        </button>
+                      )}
+                      {isLocked && (
+                        <button
+                          disabled
+                          title={`Available ${status.msUntilStart != null ? formatCountdown(status.msUntilStart) : 'soon'}`}
+                          className="flex cursor-not-allowed items-center gap-1.5 rounded-lg border border-mist-300 bg-mist-100 px-3 py-1.5 text-sm font-semibold text-ink-400"
+                        >
+                          <Lock className="h-3.5 w-3.5" />
+                          {status.msUntilStart != null ? formatCountdown(status.msUntilStart) : 'Locked'}
                         </button>
                       )}
                       {canEnd && (
@@ -208,7 +284,16 @@ export default function MeetingsPage() {
                           <StopCircle className="h-4 w-4" />
                         </button>
                       )}
-                      {isHost && (meeting.status === 'ENDED' || meeting.status === 'CANCELLED') && (
+                      {status.derived === 'ENDED' && (
+                        <button
+                          onClick={() => router.push(`/meetings/${meeting.id}/report`)}
+                          title="View meeting report"
+                          className="rounded-lg p-2 text-ink-400 transition-colors hover:bg-brand-50 hover:text-brand-600"
+                        >
+                          <FileText className="h-4 w-4" />
+                        </button>
+                      )}
+                      {isHost && (status.derived === 'ENDED' || status.derived === 'CANCELLED') && (
                         <button
                           onClick={() => setConfirmDeleteId(meeting.id)}
                           title="Delete meeting"

@@ -41,4 +41,17 @@ export const config = {
     turnUsername: process.env.TURN_USERNAME || 'projectmeet',
     turnPassword: process.env.TURN_PASSWORD || 'projectmeet_turn_2024',
   },
+
+  // Public URL used to build meeting links in emails
+  appUrl: process.env.APP_URL || 'http://localhost:3003',
+
+  // SMTP (nodemailer). If host is unset, emails are logged instead of sent.
+  smtp: {
+    host: process.env.SMTP_HOST || '',
+    port: Number.parseInt(process.env.SMTP_PORT || '587', 10),
+    secure: process.env.SMTP_SECURE === 'true',
+    user: process.env.SMTP_USER || '',
+    pass: process.env.SMTP_PASS || '',
+    from: process.env.SMTP_FROM || 'ProjectMeet <no-reply@projectmeet.local>',
+  },
 } as const;

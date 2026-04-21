@@ -35,7 +35,15 @@ const meetingSlice = createSlice({
     fetchMeetingsRequest(state) {
       state.isLoading = true;
     },
-    createMeetingRequest(state, _action: PayloadAction<{ title: string; description?: string; scheduledAt?: string }>) {
+    createMeetingRequest(
+      state,
+      _action: PayloadAction<{
+        title: string;
+        description?: string;
+        scheduledAt?: string;
+        inviteeEmails?: string[];
+      }>,
+    ) {
       state.isLoading = true;
       state.error = null;
     },

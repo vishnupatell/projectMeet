@@ -170,6 +170,17 @@ export function initializeSocketServer(httpServer: HttpServer): Server {
       socket.to(meetingRoom).emit('meeting:screen-share-stopped', { userId });
     });
 
+    // Recording
+    socket.on('meeting:recording-start', () => {
+      const meetingRoom = `meeting:${socket.data.meetingId}`;
+      socket.to(meetingRoom).emit('meeting:recording-started', { userId });
+    });
+
+    socket.on('meeting:recording-stop', () => {
+      const meetingRoom = `meeting:${socket.data.meetingId}`;
+      socket.to(meetingRoom).emit('meeting:recording-stopped', { userId });
+    });
+
     // ============================================
     // CHAT
     // ============================================

@@ -7,6 +7,7 @@ import { RegisterInput, LoginInput } from '../validators/auth.validator';
 import { ConflictError, UnauthorizedError } from '../utils/errors';
 import { parseDuration } from '../utils/helpers';
 import { logger } from '../utils/logger';
+import { invitationService } from './invitation.service';
 
 export class AuthService {
   async register(input: RegisterInput) {
@@ -21,6 +22,15 @@ export class AuthService {
       passwordHash,
       displayName: input.displayName,
     });
+
+    try {
+      await invitationService.attachPendingInvitationsToUser(user.id, user.email);
+    } catch (err) {
+      logger.error(
+        { userId: user.id, err: err instanceof Error ? err.message : err },
+        'Failed to attach pending invitations on register (non-fatal)',
+      );
+    }
 
     logger.info({ userId: user.id }, 'User registered');
     return this.generateTokens(user.id, user.email, user.role);

@@ -9,6 +9,7 @@ import { registerRequest, clearError } from '@/store/slices/authSlice';
 import { selectIsAuthenticated, selectAuthLoading, selectAuthError } from '@/store/selectors/authSelectors';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { PasswordInput } from '@/components/ui/PasswordInput';
 import { APP_NAME } from '@/lib/config';
 
 export default function RegisterPage() {
@@ -96,9 +97,8 @@ export default function RegisterPage() {
             required
           />
 
-          <Input
+          <PasswordInput
             label="Password"
-            type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Min 8 characters, 1 uppercase, 1 number"
@@ -106,9 +106,8 @@ export default function RegisterPage() {
             required
           />
 
-          <Input
+          <PasswordInput
             label="Confirm password"
-            type="password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             placeholder="Confirm your password"
