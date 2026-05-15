@@ -1,36 +1,59 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ProjectMeet Frontend
 
-## Getting Started
+Next.js 16 App Router frontend for ProjectMeet. For the project overview, architecture diagram, and full-stack setup, see the [root README](../README.md).
 
-First, run the development server:
+## Stack
+
+- **Next.js 16** (App Router, React 18, Turbopack)
+- **Redux Toolkit + Redux-Saga** — state + async side effects
+- **TailwindCSS** — styling
+- **Socket.IO client** — realtime chat + meeting events
+- **WebRTC** — peer-to-peer video/audio/screen
+
+## Run locally
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev      # http://localhost:3000
+npm run build
+npm run lint
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The dev server expects the backend on the URLs set in `NEXT_PUBLIC_API_URL` / `NEXT_PUBLIC_WS_URL` (see [.env.example](../.env.example) at repo root).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+src/
+├── app/
+│   ├── (auth)/                    # Public routes: login, register
+│   └── (main)/                    # Authenticated routes
+│       ├── dashboard/
+│       ├── meetings/              # Meetings list
+│       │   └── [id]/report/       # Post-meeting report (video + transcript + AI summary)
+│       ├── meeting/[code]/        # Live meeting room
+│       └── settings/
+├── components/                    # Reusable UI (MeetingControls, Modal, Topbar, ...)
+├── store/
+│   ├── slices/                    # authSlice, meetingSlice, chatSlice, recordingSlice
+│   ├── sagas/                     # Async flows + socket events
+│   ├── selectors/                 # Memoized selectors (reselect)
+│   └── index.ts
+└── lib/
+    ├── services/api.ts            # HTTP API client (auth-aware)
+    └── hooks/useStore.ts          # Typed Redux hooks
+```
 
-## Learn More
+## Conventions
 
-To learn more about Next.js, take a look at the following resources:
+- **Slices** hold plain state, no side effects. Complex flows (API calls, socket events, retry logic) live in **sagas**.
+- Components consume state through **memoized selectors**, never raw `useSelector(state => state.x)`.
+- API calls go through `apiClient` ([src/lib/services/api.ts](src/lib/services/api.ts)) — it handles JWT, auto-refresh on 401, and redirects to `/login` on hard auth failure.
+- Socket.IO is initialized in the root saga; incoming events are dispatched as Redux actions.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Key flows
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Login / register** — `authSaga` stores `accessToken` + `refreshToken` in `localStorage`, then fetches profile
+- **Join meeting** — `meetingSaga` calls `/api/meetings/join`, then opens WebRTC peer connections via the signaling socket
+- **Record meeting** — `MediaRecorder` captures the combined stream; on stop, `recordingSaga` uploads via multipart to `/api/recordings/upload`
+- **View report** — `/meetings/[id]/report` polls `/api/transcripts/meeting/:id` every 5s while status is `PENDING` / `TRANSCRIBING` / `SUMMARIZING`

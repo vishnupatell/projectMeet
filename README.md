@@ -522,3 +522,253 @@ backend in `docker-compose.yml`, and `docker compose up -d backend`.
 **Recordings not transcribing** — verify both backend and ai-service have the
 same `recordings_data` volume mounted and that the file exists at the expected
 path. `docker compose exec ai-service ls /recordings` should show it.
+# ProjectMeet
+
+A self-hosted video conferencing platform with real-time chat, meeting recording, and **zero-cost AI-powered post-meeting reports** (transcription + summary) — all running locally.
+
+Built end-to-end: WebRTC video, Socket.IO chat, Whisper transcription, and Llama 3.2 summarization via Ollama.
+
+---
+
+## Features
+
+- **Video conferencing** — WebRTC peer-to-peer with coturn TURN/STUN for NAT traversal
+- **Real-time chat** — Socket.IO with Redis adapter for horizontal scaling
+- **Screen sharing** — share your screen during meetings
+- **Meeting recording** — MediaRecorder API captures meetings to webm/mp4
+- **AI post-meeting reports** — every recording automatically produces:
+  - Full transcript with clickable timestamped segments
+  - ~20-line AI summary of what was discussed
+  - 5-8 key discussion points
+- **Auth** — JWT access + refresh tokens, session management, logout-everywhere
+- **Fully Dockerized** — `docker compose up -d` and the whole stack runs
+
+---
+
+## Architecture
+
+```
+ ┌──────────────┐    HTTPS / WSS    ┌──────────────────┐
+ │   Next.js    │ ────────────────► │   Express API    │
+ │   Frontend   │ ◄──── Socket.IO ─►│   + Socket.IO    │
+ │  (Redux +    │                    │   (Node/TS)      │
+ │   Sagas)     │                    └────────┬─────────┘
+ └──────┬───────┘                             │
+        │ WebRTC                              │ Prisma
+        ▼                                     ▼
+ ┌──────────────┐                    ┌─────────────────┐
+ │   coturn     │                    │   PostgreSQL    │
+ │ (TURN/STUN)  │                    │      +          │
+ └──────────────┘                    │   Redis pub/sub │
+                                     └─────────────────┘
+
+ Meeting ends ── recording uploads ──► backend ──HTTP──► ai-service
+                                                          │    │
+                                         ┌────────────────┘    │
+                                         ▼                     ▼
+                                 ┌──────────────┐      ┌──────────────┐
+                                 │   Whisper    │      │    Ollama    │
+                                 │ (transcribe) │      │ (llama3.2:3b │
+                                 │              │      │  summarize)  │
+                                 └──────────────┘      └──────────────┘
+```
+
+### Tech stack
+
+**Frontend**
+- Next.js 16 (App Router, React 18)
+- Redux Toolkit + Redux-Saga
+- TailwindCSS
+- Socket.IO client
+- WebRTC
+
+**Backend**
+- Node.js + Express + TypeScript
+- Modular DDD (domain / application / infrastructure layers)
+- Domain-event bus for cross-module communication
+- Prisma ORM (PostgreSQL)
+- Socket.IO with Redis adapter
+- Zod validation, Pino structured logs, JWT auth
+
+**Infra / AI**
+- PostgreSQL 16, Redis 7
+- coturn (TURN/STUN)
+- Python FastAPI AI sidecar
+- faster-whisper (`base` model, CPU int8)
+- Ollama + Llama 3.2 3B
+- Docker Compose
+
+---
+
+## Quick start
+
+### Prerequisites
+
+- Docker + Docker Compose
+- ~8 GB free disk space (for AI models)
+- 4 GB+ RAM recommended
+
+### Setup
+
+```bash
+# 1. Clone
+git clone https://github.com/<your-username>/projectMeet.git
+cd projectMeet
+
+# 2. Create your .env from the template
+cp .env.example .env
+# Edit .env and set JWT_SECRET, JWT_REFRESH_SECRET, POSTGRES_PASSWORD, TURN_PASSWORD
+
+# 3. Start the stack
+docker compose up -d
+
+# 4. First-time: pull the Llama model into Ollama (~2 GB, one-time)
+docker exec projectmeet-ollama ollama pull llama3.2:3b
+
+# 5. Open the app
+open http://localhost:3003
+```
+
+### Ports
+
+| Service       | Port  | URL                          |
+|---------------|-------|------------------------------|
+| Frontend      | 3003  | http://localhost:3003        |
+| Backend API   | 4003  | http://localhost:4003/api    |
+| AI service    | 8001  | http://localhost:8001/health |
+| Ollama        | 11435 | http://localhost:11435       |
+| PostgreSQL    | 5433  | localhost:5433               |
+| Redis         | 6379  | localhost:6379               |
+| coturn        | 3478  | localhost:3478               |
+
+---
+
+## Using the app
+
+1. Register an account at `http://localhost:3003/register`
+2. Create a meeting from the dashboard
+3. Join the meeting room — enable mic/camera/screen-share
+4. Click the red record button to start recording
+5. End the meeting when done
+6. On the meetings page, click the **📄 report icon** next to the ended meeting
+7. The report page shows the video, AI summary, and clickable transcript
+
+The transcript pipeline runs automatically in the background as soon as a recording is uploaded. First recording takes ~2-5 min on CPU (Whisper model download + inference + Llama summarization).
+
+---
+
+## API reference
+
+See [ProjectMeet_API_Reference.xlsx](ProjectMeet_API_Reference.xlsx) for the full API reference with cURL examples, Postman bodies, and response shapes for every endpoint:
+
+- **Auth** — register, login, refresh, logout, profile
+- **Meetings** — create, list, join, leave, end, ice-servers
+- **Chat** — create chat, list chats, get messages, send message
+- **Recordings** — upload, list, download, delete
+- **Transcripts** — get by recording, generate, get by meeting
+- **AI Service** — `/health`, `/transcribe`, `/summarize`
+
+---
+
+## Project structure
+
+```
+projectMeet/
+├── backend/               # Node + Express + Socket.IO
+│   ├── src/
+│   │   ├── modules/       # DDD modules: auth, chat, meeting
+│   │   ├── controllers/   # HTTP handlers
+│   │   ├── services/      # Domain/application services
+│   │   ├── sockets/       # Socket.IO event handlers
+│   │   ├── shared/        # Domain-event bus, shared abstractions
+│   │   └── routes/        # Route definitions
+│   └── prisma/            # Schema + migrations
+├── frontend/              # Next.js 16 + Redux + TailwindCSS
+│   └── src/
+│       ├── app/           # App Router pages
+│       ├── components/    # Reusable React components
+│       ├── store/         # Redux slices + sagas + selectors
+│       └── lib/           # API client, WebRTC helpers
+├── ai-service/            # Python FastAPI sidecar
+│   ├── app.py             # Whisper + Ollama endpoints
+│   ├── Dockerfile
+│   └── requirements.txt
+├── coturn/                # TURN/STUN server config
+├── docker-compose.yml     # Full-stack orchestration
+├── .env.example           # Config template
+└── CLAUDE.md              # Dev guide (for Claude Code)
+```
+
+---
+
+## Development (without Docker)
+
+**Backend:**
+```bash
+cd backend
+npm install
+npm run prisma:generate
+npm run prisma:migrate
+npm run dev          # http://localhost:4000
+```
+
+**Frontend:**
+```bash
+cd frontend
+npm install
+npm run dev          # http://localhost:3000
+```
+
+**AI service:**
+```bash
+cd ai-service
+pip install -r requirements.txt
+# Needs Ollama running locally: https://ollama.ai
+uvicorn app:app --reload --port 8000
+```
+
+---
+
+## Useful commands
+
+```bash
+# View logs
+docker compose logs -f backend
+docker compose logs -f ai-service
+
+# Reset the database
+docker compose down -v
+docker compose up -d
+
+# Run Prisma migrations
+docker compose exec backend npx prisma migrate deploy
+
+# Open Prisma Studio
+docker compose exec backend npx prisma studio   # http://localhost:5555
+
+# Health checks
+curl http://localhost:4003/api/health
+curl http://localhost:8001/health
+```
+
+---
+
+## Design decisions
+
+- **Modular DDD** — each module (`auth`, `chat`, `meeting`) is self-contained with its own domain/application/infrastructure layers. Cross-module communication goes through the domain-event bus, not direct imports.
+- **Redux-Saga over thunks** — complex async flows (socket events, recording uploads, retry logic) are easier to model as sagas.
+- **Socket.IO + Redis adapter** — lets you scale backend horizontally; sticky sessions aren't needed.
+- **Self-hosted AI** — Whisper + Llama gives feature parity with Deepgram + GPT at zero ongoing cost. Trade-off is CPU inference latency (~30-60s for summary).
+- **Prisma + migrations in git** — schema changes are tracked and reviewable.
+
+---
+
+## License
+
+MIT
+
+---
+
+## Author
+
+Built by **Vishnu** as a full-stack exploration of WebRTC, real-time systems, and self-hosted AI.
