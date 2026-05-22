@@ -39,8 +39,9 @@ AI transcription, meeting summarization, and email invitations.
 11. [Network & Ports](#network--ports)
 12. [Database Migrations](#database-migrations)
 13. [AI Service (Whisper + Ollama)](#ai-service-whisper--ollama)
-14. [Running Without Docker](#running-without-docker)
-15. [Troubleshooting](#troubleshooting)
+14. [Live Transcript & AI Meeting Assistant](#live-transcript--ai-meeting-assistant)
+15. [Running Without Docker](#running-without-docker)
+16. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -54,6 +55,8 @@ AI transcription, meeting summarization, and email invitations.
 | Recording | In-browser MediaRecorder; uploads to backend; stored on a shared volume |
 | AI transcription | Whisper (faster-whisper) runs on recorded audio |
 | AI summary + key points | Ollama (`llama3.2:3b`) summarizes the transcript |
+| **Live in-meeting transcript** | CC button records mic audio, sends 15-second chunks to Whisper, shows captions and stores text in Redis |
+| **AI Meeting Assistant** | Sparkles icon opens a chat panel — late joiners ask questions about what was discussed before they arrived; AI answers using the stored transcript |
 | Meeting invitations | Email invites via nodemailer at meeting creation (instant or scheduled) |
 | Meeting report page | Per-recording transcript, summary, and searchable segments |
 
@@ -454,6 +457,79 @@ page.
 **CPU-only by default.** For GPU inference, add a `deploy.resources.reservations.devices`
 block with NVIDIA runtime to the `ollama` and `ai-service` services, and flip
 `WHISPER_DEVICE=cuda`.
+
+---
+
+## Live Transcript & AI Meeting Assistant
+
+### Live Transcript (CC button)
+
+During any active meeting a **CC (closed captions)** button appears in the
+bottom control bar. Clicking it starts in-browser audio capture using the
+`MediaRecorder` API:
+
+1. Microphone audio is recorded in 15-second chunks (`audio/webm;codecs=opus`).
+2. Each chunk is sent directly from the browser to the AI service
+   (`POST http://localhost:8001/transcribe-upload`).
+3. The transcribed text is displayed as scrolling captions above the controls
+   **and simultaneously pushed to the backend**
+   (`POST /api/meetings/:id/live-segment`), where it is appended to a Redis
+   list with a 4-hour TTL.
+4. Clicking CC again stops the recorder and clears the caption bar.
+
+No video is captured — only the user's own microphone stream.
+
+### AI Meeting Assistant (✨ Sparkles icon)
+
+A ✨ **Sparkles** icon sits in the top-right of the meeting info bar. Clicking
+it opens a side panel — no transcript is shown unless asked:
+
+```
+┌────────────────────────────────────┐
+│ ✨ AI Meeting Assistant        ✕   │
+│────────────────────────────────────│
+│ 🤖  Hi! Ask me anything about      │
+│     what's been discussed…         │
+│                                    │
+│  You ▶  was my name mentioned?     │
+│  🤖  Based on the transcript, your │
+│       name came up at 1:42 when…   │
+│                                    │
+│ ┌──────────────────────────────┐   │
+│ │ Ask about the meeting…  [▶]  │   │
+│ └──────────────────────────────┘   │
+│ Powered by Whisper + Llama         │
+└────────────────────────────────────┘
+```
+
+**Typical late-joiner flow:**
+
+1. Join the meeting 10 minutes late.
+2. Click ✨ in the top bar.
+3. Type: *"Give me a quick summary"* or *"Was my name mentioned?"*
+4. The backend (`POST /api/meetings/:id/ask`):
+   - Fetches the accumulated live-transcript text from Redis.
+   - Falls back to any DB-stored recording transcripts if no live text exists.
+   - Looks up the requesting user's `displayName` from their profile and passes
+     it to the AI so it can search for name mentions.
+   - Forwards everything to the AI service (`POST /ask`) which uses Ollama
+     (Llama 3.2 3B) to answer the question in context.
+5. The answer appears in the chat panel within a few seconds.
+
+### API endpoints added
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/meetings/:id/live-segment` | Append a transcript segment to the Redis live-transcript list |
+| `POST` | `/api/meetings/:id/ask` | Ask the AI a question about the meeting; returns `{ answer }` |
+| `POST` | `/transcribe-upload` *(AI service)* | Accept a raw audio blob and return Whisper transcript |
+| `POST` | `/ask` *(AI service)* | Answer a question given a transcript and optional user name |
+
+### Environment variable
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `NEXT_PUBLIC_AI_SERVICE_URL` | `http://localhost:8001` | Browser → AI service URL used for live chunk transcription |
 
 ---
 

@@ -246,6 +246,21 @@ class ApiClient {
   async getMeetingTranscripts(meetingId: string) {
     return this.request<any>(`/transcripts/meeting/${meetingId}`);
   }
+
+  // Meeting AI assistant
+  async pushLiveSegment(meetingId: string, text: string) {
+    return this.request<any>(`/meetings/${meetingId}/live-segment`, {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    });
+  }
+
+  async askMeeting(meetingId: string, question: string) {
+    return this.request<any>(`/meetings/${meetingId}/ask`, {
+      method: 'POST',
+      body: JSON.stringify({ question }),
+    });
+  }
 }
 
 export const apiClient = new ApiClient(API_URL);

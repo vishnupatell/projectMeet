@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { meetingService } from '../services/meeting.service';
+import { transcriptService } from '../services/transcript.service';
+import prisma from '../config/database';
 
 export class MeetingController {
   async create(req: Request, res: Response, next: NextFunction) {
@@ -69,6 +71,40 @@ export class MeetingController {
     try {
       const iceServers = meetingService.getIceServers();
       res.json({ success: true, data: iceServers });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async liveSegment(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { text } = req.body as { text: string };
+      if (!text?.trim()) {
+        res.status(400).json({ success: false, error: { message: 'text is required' } });
+        return;
+      }
+      await transcriptService.appendLiveSegment(req.params.id, text.trim());
+      res.json({ success: true });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async ask(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { question } = req.body as { question: string };
+      if (!question?.trim()) {
+        res.status(400).json({ success: false, error: { message: 'question is required' } });
+        return;
+      }
+      // Resolve display name from email
+      const user = await prisma.user.findUnique({
+        where: { id: req.user!.userId },
+        select: { displayName: true, email: true },
+      });
+      const userName = user?.displayName || user?.email?.split('@')[0] || undefined;
+      const answer = await transcriptService.askQuestion(req.params.id, question.trim(), userName);
+      res.json({ success: true, data: { answer } });
     } catch (error) {
       next(error);
     }

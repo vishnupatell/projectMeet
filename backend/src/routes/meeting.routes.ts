@@ -16,5 +16,7 @@ router.get('/:id', meetingController.getById);
 router.post('/join', validate(joinMeetingSchema), meetingController.join);
 router.post('/:id/leave', meetingController.leave);
 router.post('/:id/end', meetingController.end);
+router.post('/:id/live-segment', meetingController.liveSegment);
+router.post('/:id/ask', meetingController.ask);
 
 export default router;
