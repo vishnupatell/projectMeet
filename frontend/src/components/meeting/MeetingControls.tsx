@@ -13,6 +13,8 @@ import {
   Users,
   CircleDot,
   StopCircle,
+  Captions,
+  CaptionsOff,
 } from 'lucide-react';
 
 interface MeetingControlsProps {
@@ -22,12 +24,14 @@ interface MeetingControlsProps {
   readonly isChatOpen: boolean;
   readonly isRecording: boolean;
   readonly isUploadingRecording: boolean;
+  readonly isTranscribing: boolean;
   readonly participantCount: number;
   readonly onToggleAudio: () => void;
   readonly onToggleVideo: () => void;
   readonly onToggleScreenShare: () => void;
   readonly onToggleChat: () => void;
   readonly onToggleRecording: () => void;
+  readonly onToggleTranscribe: () => void;
   readonly onLeaveMeeting: () => void;
 }
 
@@ -38,12 +42,14 @@ export function MeetingControls({
   isChatOpen,
   isRecording,
   isUploadingRecording,
+  isTranscribing,
   participantCount,
   onToggleAudio,
   onToggleVideo,
   onToggleScreenShare,
   onToggleChat,
   onToggleRecording,
+  onToggleTranscribe,
   onLeaveMeeting,
 }: MeetingControlsProps) {
   return (
@@ -112,6 +118,20 @@ export function MeetingControls({
           </button>
         );
       })()}
+
+      {/* Live Transcribe */}
+      <button
+        onClick={onToggleTranscribe}
+        className={clsx(
+          'rounded-full p-3 transition-all duration-200',
+          isTranscribing
+            ? 'bg-brand-500 text-white hover:bg-brand-600'
+            : 'bg-white/15 text-white hover:bg-white/25',
+        )}
+        title={isTranscribing ? 'Stop live transcript' : 'Start live transcript'}
+      >
+        {isTranscribing ? <Captions className="h-5 w-5" /> : <CaptionsOff className="h-5 w-5" />}
+      </button>
 
       {/* Chat */}
       <button

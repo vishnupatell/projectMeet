@@ -15,8 +15,12 @@ import type { Message } from '@/types';
 import { VideoTile } from '@/components/meeting/VideoTile';
 import { MeetingControls } from '@/components/meeting/MeetingControls';
 import { MeetingChat } from '@/components/chat/MeetingChat';
+import { MeetingAIAssistant } from '@/components/meeting/MeetingAIAssistant';
+import type { TranscriptSegment } from '@/components/meeting/LiveTranscript';
 import { AuthGuard } from '@/components/auth/AuthGuard';
-import { PanelLeftClose, PanelLeftOpen, Maximize, Minimize } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, Maximize, Minimize, Sparkles } from 'lucide-react';
+
+const AI_SERVICE_URL = process.env.NEXT_PUBLIC_AI_SERVICE_URL || 'http://localhost:8001';
 
 interface RemoteStream {
   userId: string;
@@ -45,8 +49,17 @@ export default function MeetingRoomPage() {
   const [error, setError] = useState<string | null>(null);
   const [isImmersive, setIsImmersive] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isAIOpen, setIsAIOpen] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [transcriptSegments, setTranscriptSegments] = useState<TranscriptSegment[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+
   const joinedRef = useRef(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const transcribeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastSegmentRef = useRef<string>('');
 
   const handleToggleImmersive = useCallback(() => {
     setIsImmersive((v) => !v);
@@ -224,6 +237,102 @@ export default function MeetingRoomPage() {
     dispatch(setChatOpen(!isChatOpen));
   }, [isChatOpen, dispatch]);
 
+  const sendAudioChunk = useCallback(async (chunks: Blob[]) => {
+    if (chunks.length === 0) return;
+    const blob = new Blob(chunks, { type: 'audio/webm' });
+    if (blob.size < 1000) return;
+    setIsProcessing(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', blob, 'chunk.webm');
+      if (lastSegmentRef.current) {
+        formData.append('initial_prompt', lastSegmentRef.current);
+      }
+      const res = await fetch(`${AI_SERVICE_URL}/transcribe-upload`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.full_text?.trim()) {
+        const segText = data.full_text.trim();
+        lastSegmentRef.current = segText.slice(-200);
+        setTranscriptSegments((prev) => [
+          ...prev,
+          { id: `${Date.now()}-${Math.random()}`, text: segText, timestamp: Date.now() },
+        ]);
+        // Push to backend so late joiners can ask AI about it
+        if (currentMeeting?.id) {
+          apiClient.pushLiveSegment(currentMeeting.id, segText).catch(() => {});
+        }
+      }
+    } catch (err) {
+      console.error('Transcription chunk failed:', err);
+    } finally {
+      setIsProcessing(false);
+    }
+  }, []);
+
+  const handleToggleTranscribe = useCallback(() => {
+    if (isTranscribing) {
+      if (transcribeIntervalRef.current) {
+        clearInterval(transcribeIntervalRef.current);
+        transcribeIntervalRef.current = null;
+      }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+      mediaRecorderRef.current = null;
+      setIsTranscribing(false);
+    } else {
+      if (!localStream) return;
+      const audioStream = new MediaStream(localStream.getAudioTracks());
+      let recorder: MediaRecorder;
+      try {
+        recorder = new MediaRecorder(audioStream, { mimeType: 'audio/webm;codecs=opus' });
+      } catch {
+        recorder = new MediaRecorder(audioStream);
+      }
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setIsTranscribing(true);
+      setTranscriptSegments([]);
+
+      transcribeIntervalRef.current = setInterval(() => {
+        const current = mediaRecorderRef.current;
+        if (!current || current.state === 'inactive') return;
+        current.onstop = () => {
+          const chunks = [...audioChunksRef.current];
+          audioChunksRef.current = [];
+          sendAudioChunk(chunks);
+          try {
+            const next = new MediaRecorder(audioStream, { mimeType: 'audio/webm;codecs=opus' });
+            next.ondataavailable = (e) => {
+              if (e.data.size > 0) audioChunksRef.current.push(e.data);
+            };
+            mediaRecorderRef.current = next;
+            next.start();
+          } catch {}
+        };
+        current.stop();
+      }, 8000);
+    }
+  }, [isTranscribing, localStream, sendAudioChunk]);
+
+  // Cleanup transcription on unmount
+  useEffect(() => {
+    return () => {
+      if (transcribeIntervalRef.current) clearInterval(transcribeIntervalRef.current);
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+    };
+  }, []);
+
   const handleLeaveMeeting = useCallback(() => {
     socketService.emit('meeting:leave');
     webrtcService.cleanup();
@@ -330,8 +439,15 @@ export default function MeetingRoomPage() {
               <div className="text-xs font-medium text-slate-200/85">
                 {participants.length + 1} participant{participants.length !== 0 ? 's' : ''}
               </div>
-              <button
-                onClick={handleToggleFullscreen}
+              <button                onClick={() => setIsAIOpen((v) => !v)}
+                className={`rounded-lg p-1.5 transition-colors hover:bg-white/10 ${
+                  isAIOpen ? 'text-brand-400' : 'text-slate-200 hover:text-white'
+                }`}
+                title="AI Meeting Assistant"
+              >
+                <Sparkles className="h-4 w-4" />
+              </button>
+              <button                onClick={handleToggleFullscreen}
                 className="rounded-lg p-1.5 text-slate-200 transition-colors hover:bg-white/10 hover:text-white"
                 title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
               >
@@ -362,11 +478,16 @@ export default function MeetingRoomPage() {
             isVideoOn={isVideoOn}
             isScreenSharing={isScreenSharing}
             isChatOpen={isChatOpen}
+            isRecording={false}
+            isUploadingRecording={false}
+            isTranscribing={isTranscribing}
             participantCount={participants.length + 1}
             onToggleAudio={handleToggleAudio}
             onToggleVideo={handleToggleVideo}
             onToggleScreenShare={handleToggleScreenShare}
             onToggleChat={handleToggleChat}
+            onToggleRecording={() => {}}
+            onToggleTranscribe={handleToggleTranscribe}
             onLeaveMeeting={handleLeaveMeeting}
           />
         </div>
@@ -376,6 +497,14 @@ export default function MeetingRoomPage() {
           <div className="w-80 flex-shrink-0 border-l border-white/10">
             <MeetingChat chatId={currentMeeting.chat.id} />
           </div>
+        )}
+
+        {/* AI Assistant Panel */}
+        {isAIOpen && currentMeeting?.id && (
+          <MeetingAIAssistant
+            meetingId={currentMeeting.id}
+            onClose={() => setIsAIOpen(false)}
+          />
         )}
       </div>
     </AuthGuard>

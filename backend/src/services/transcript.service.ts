@@ -1,10 +1,12 @@
 import path from 'path';
 import prisma from '../config/database';
+import { getRedisClient } from '../config/redis';
 import { NotFoundError } from '../utils/errors';
 import { logger } from '../utils/logger';
 
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://ai-service:8000';
 const AI_RECORDINGS_PATH = process.env.AI_RECORDINGS_PATH || '/recordings';
+const LIVE_SEGMENT_TTL = 60 * 60 * 4; // 4 hours
 
 interface TranscribeResponse {
   language: string;
@@ -132,6 +134,57 @@ export class TranscriptService {
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  // Live transcript — segments are stored in Redis during an active meeting
+  private liveKey(meetingId: string) {
+    return `liveTranscript:${meetingId}`;
+  }
+
+  async appendLiveSegment(meetingId: string, text: string): Promise<void> {
+    const redis = getRedisClient();
+    const key = this.liveKey(meetingId);
+    const entry = JSON.stringify({ text, ts: Date.now() });
+    await redis.rpush(key, entry);
+    await redis.expire(key, LIVE_SEGMENT_TTL);
+  }
+
+  async getLiveTranscriptText(meetingId: string): Promise<string> {
+    const redis = getRedisClient();
+    const entries = await redis.lrange(this.liveKey(meetingId), 0, -1);
+    return entries
+      .map((e) => {
+        try { return JSON.parse(e).text as string; } catch { return e; }
+      })
+      .join(' ');
+  }
+
+  async askQuestion(meetingId: string, question: string, userName?: string): Promise<string> {
+    const liveText = await this.getLiveTranscriptText(meetingId);
+
+    // Also try DB-stored transcripts as fallback
+    let transcriptText = liveText;
+    if (!transcriptText.trim()) {
+      const transcripts = await this.getMeetingTranscripts(meetingId);
+      transcriptText = transcripts
+        .filter((t) => t.fullText)
+        .map((t) => t.fullText!)
+        .join('\n\n');
+    }
+
+    const res = await fetch(`${AI_SERVICE_URL}/ask`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transcript: transcriptText, question, user_name: userName }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`AI ask failed: ${res.status} ${errText}`);
+    }
+
+    const data = await res.json() as { answer: string };
+    return data.answer;
   }
 }
 
