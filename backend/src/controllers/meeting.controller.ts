@@ -83,7 +83,7 @@ export class MeetingController {
         res.status(400).json({ success: false, error: { message: 'text is required' } });
         return;
       }
-      await transcriptService.appendLiveSegment(req.params.id, text.trim());
+      await transcriptService.appendLiveSegment(req.params.id as string, text.trim());
       res.json({ success: true });
     } catch (error) {
       next(error);
@@ -103,7 +103,7 @@ export class MeetingController {
         select: { displayName: true, email: true },
       });
       const userName = user?.displayName || user?.email?.split('@')[0] || undefined;
-      const answer = await transcriptService.askQuestion(req.params.id, question.trim(), userName);
+      const answer = await transcriptService.askQuestion(req.params.id as string, question.trim(), userName);
       res.json({ success: true, data: { answer } });
     } catch (error) {
       next(error);

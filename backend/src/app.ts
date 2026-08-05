@@ -26,15 +26,36 @@ app.use(cors({
   },
 }));
 
-// Rate limiting
-const limiter = rateLimit({
+// Rate limiting - Auth routes (login, register)
+const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 min
-  max: 100, // 100 requests per window
+  max: 20, // 20 requests per window (stricter for auth)
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: { code: 'RATE_LIMITED', message: 'Too many auth attempts, try again later' } },
+});
+app.use('/api/auth', authLimiter);
+
+// Rate limiting - General API
+const apiLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 120, // 120 requests per minute
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, error: { code: 'RATE_LIMITED', message: 'Too many requests' } },
 });
-app.use('/api/auth', limiter);
+app.use('/api', apiLimiter);
+
+// Rate limiting - File uploads (stricter)
+const uploadLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 min
+  max: 10, // 10 uploads per 5 min
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: { code: 'RATE_LIMITED', message: 'Upload limit reached' } },
+});
+app.use('/api/files', uploadLimiter);
+app.use('/api/recordings', uploadLimiter);
 
 // Body parsing
 app.use(express.json({ limit: '10mb' }));
@@ -46,6 +67,9 @@ app.use(compression());
 if (config.isDev) {
   app.use(morgan('dev'));
 }
+
+// Static file serving for uploads
+app.use('/uploads', express.static('uploads'));
 
 // Routes
 app.use('/api', routes);

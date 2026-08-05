@@ -4,6 +4,7 @@ import authReducer from './slices/authSlice';
 import meetingReducer from './slices/meetingSlice';
 import chatReducer from './slices/chatSlice';
 import recordingReducer from './slices/recordingSlice';
+import featuresReducer from './slices/featuresSlice';
 import rootSaga from './sagas';
 
 const sagaMiddleware = createSagaMiddleware();
@@ -14,6 +15,7 @@ export const store = configureStore({
     meeting: meetingReducer,
     chat: chatReducer,
     recording: recordingReducer,
+    features: featuresReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

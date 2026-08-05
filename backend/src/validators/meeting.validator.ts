@@ -26,10 +26,14 @@ export const createMeetingSchema = z.object({
   scheduledAt: scheduledAtSchema,
   maxParticipants: z.number().int().min(2).max(500).optional(),
   inviteeEmails: z.array(z.string().email('Invalid email')).max(100).optional(),
+  password: z.string().max(50).optional(),
+  waitingRoomEnabled: z.boolean().optional(),
+  e2eeEnabled: z.boolean().optional(),
 });
 
 export const joinMeetingSchema = z.object({
   code: z.string().min(1, 'Meeting code is required'),
+  password: z.string().optional(),
 });
 
 export type CreateMeetingInput = z.infer<typeof createMeetingSchema>;

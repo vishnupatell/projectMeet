@@ -81,26 +81,32 @@ src/
 │   ├── chat/
 │   └── meeting/
 ├── controllers/          # HTTP request handlers (thin layer)
+│   ├── auth, meeting, chat, recording, transcript (core)
+│   └── poll, breakout, webhook, analytics, fileshare, actionitem, admin (features)
+├── services/             # Business logic layer
+│   ├── auth, meeting, chat, recording, transcript, invitation, mail (core)
+│   └── poll, breakout, webhook, analytics, fileshare, actionitem, admin (features)
 ├── middlewares/          # Express middlewares (auth, validation, error handling)
 ├── validators/           # Request validation schemas (Zod)
-├── sockets/              # Socket.IO event handlers and setup
+├── sockets/              # Socket.IO event handlers (WebRTC + features)
+├── routes/               # Express route definitions (12 modules)
 ├── shared/               # Cross-cutting concerns
 │   ├── domain/          # Shared domain abstractions (DomainEvent interface)
 │   ├── application/     # Shared application interfaces (DomainEventBus)
 │   └── infrastructure/  # Shared infrastructure (InMemoryDomainEventBus, event handlers)
 ├── config/              # App configuration (env parsing)
 ├── utils/               # Helpers (logger, error handling, CORS)
-├── app.ts               # Express app setup
+├── app.ts               # Express app setup (tiered rate limiting, security)
 └── server.ts            # HTTP server and graceful shutdown
 ```
 
 **Event-driven architecture**: Domain events propagate through `DomainEventBus` for cross-module communication. Event handlers defined in `shared/infrastructure/events/default-domain-event-handlers.ts`.
 
-**Database**: Prisma ORM with PostgreSQL. Schema at `prisma/schema.prisma`.
+**Database**: Prisma ORM with PostgreSQL. Schema at `prisma/schema.prisma`. Models include: User, Session, Meeting, MeetingParticipant, MeetingInvitation, Chat, ChatMember, Message, Recording, Transcript, Poll, PollVote, BreakoutRoom, BreakoutParticipant, SharedFile, Webhook, MeetingAnalytics, ActionItem.
 
 ### Frontend Architecture
 
-**Next.js 16+ App Router** with type-safe React components:
+**Next.js 16+ App Router** with type-safe React components (PWA-enabled):
 
 ```
 src/
@@ -110,13 +116,18 @@ src/
 │   │   ├── dashboard/
 │   │   ├── meetings/
 │   │   ├── meeting/[code]/ # Dynamic meeting room
-│   │   └── settings/
+│   │   ├── settings/
+│   │   └── admin/        # Admin panel (role-gated)
 │   └── layout.tsx, page.tsx
 ├── components/           # Reusable React components
+│   ├── meeting/          # Video, controls, reactions, polls, whiteboard, etc.
+│   ├── chat/             # Chat panel
+│   ├── ui/               # ThemeToggle, common elements
+│   └── layout/           # App layout
 ├── store/                # Redux state management
-│   ├── slices/          # Redux slices (authSlice, meetingSlice, chatSlice)
-│   ├── selectors/       # Memoized selectors (authSelectors, meetingSelectors, etc.)
-│   ├── sagas/           # Redux-Saga side effects for async operations
+│   ├── slices/          # Redux slices (auth, meeting, chat, recording, features)
+│   ├── selectors/       # Memoized selectors
+│   ├── sagas/           # Async flows (auth, meeting, chat, recording, features)
 │   └── index.ts         # Store configuration
 └── styles/              # TailwindCSS configuration
 ```

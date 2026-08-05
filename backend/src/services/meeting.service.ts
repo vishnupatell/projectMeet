@@ -19,6 +19,9 @@ export class MeetingService {
       owner: { connect: { id: userId } },
       scheduledAt: input.scheduledAt ?? null,
       maxParticipants: input.maxParticipants || 100,
+      password: (input as any).password || null,
+      waitingRoomEnabled: (input as any).waitingRoomEnabled || false,
+      e2eeEnabled: (input as any).e2eeEnabled || false,
       chat: {
         create: {
           type: 'GROUP',

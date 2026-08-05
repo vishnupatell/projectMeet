@@ -101,3 +101,73 @@ body {
 .surface-card {
   @apply rounded-2xl border border-mist-200/90 bg-white shadow-card;
 }
+
+/* Reaction animation */
+@keyframes bounce-up {
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(-30px) scale(1.3);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateY(-60px) scale(0.8);
+    opacity: 0;
+  }
+}
+
+.animate-bounce-up {
+  animation: bounce-up 2s ease-out forwards;
+}
+
+/* Dark mode styles (activated via ThemeToggle) */
+html.dark body {
+  color: #e2e8f0;
+  background: #0f172a;
+}
+
+html.dark ::-webkit-scrollbar-track {
+  background: #1e293b;
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+
+html.dark .frosted-panel {
+  background: rgba(15, 23, 42, 0.88);
+  border-color: rgba(51, 65, 85, 0.9);
+  color: #e2e8f0;
+}
+
+html.dark .frosted-panel .text-ink-800,
+html.dark .frosted-panel .text-ink-900 {
+  color: #e2e8f0;
+}
+
+html.dark .surface-card {
+  background: #1e293b;
+  border-color: rgba(51, 65, 85, 0.9);
+  color: #e2e8f0;
+}
+
+/* Mobile responsive meeting grid */
+@media (max-width: 768px) {
+  .video-grid {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .meeting-sidebar {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+  .video-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
