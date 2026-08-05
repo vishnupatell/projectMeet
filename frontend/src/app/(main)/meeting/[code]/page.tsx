@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useAppDispatch, useAppSelector } from '@/lib/hooks/useStore';
 import { joinMeetingRequest, leaveMeetingSuccess, setAudioOn, setVideoOn, setScreenSharing, participantJoined, participantLeft, participantToggleAudio, participantToggleVideo } from '@/store/slices/meetingSlice';
 import { setChatOpen, newMessage } from '@/store/slices/chatSlice';
+import { addReaction, addPoll, updatePollResults } from '@/store/slices/featuresSlice';
 import { selectCurrentMeeting, selectIsAudioOn, selectIsVideoOn, selectIsScreenSharing, selectParticipants } from '@/store/selectors/meetingSelectors';
 import { selectIsChatOpen } from '@/store/selectors/chatSelectors';
 import { selectUser } from '@/store/selectors/authSelectors';
@@ -16,9 +17,12 @@ import { VideoTile } from '@/components/meeting/VideoTile';
 import { MeetingControls } from '@/components/meeting/MeetingControls';
 import { MeetingChat } from '@/components/chat/MeetingChat';
 import { MeetingAIAssistant } from '@/components/meeting/MeetingAIAssistant';
+import { ReactionBar } from '@/components/meeting/ReactionBar';
+import { PollPanel } from '@/components/meeting/PollPanel';
+import { ActionItemPanel } from '@/components/meeting/ActionItemPanel';
 import type { TranscriptSegment } from '@/components/meeting/LiveTranscript';
 import { AuthGuard } from '@/components/auth/AuthGuard';
-import { PanelLeftClose, PanelLeftOpen, Maximize, Minimize, Sparkles } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, Maximize, Minimize, Sparkles, BarChart3, CheckSquare, Hand, X } from 'lucide-react';
 
 const AI_SERVICE_URL = process.env.NEXT_PUBLIC_AI_SERVICE_URL || 'http://localhost:8001';
 
@@ -53,6 +57,10 @@ export default function MeetingRoomPage() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [transcriptSegments, setTranscriptSegments] = useState<TranscriptSegment[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isPollsOpen, setIsPollsOpen] = useState(false);
+  const [isActionItemsOpen, setIsActionItemsOpen] = useState(false);
+  const [isHandRaised, setIsHandRaised] = useState(false);
+  const [raisedHands, setRaisedHands] = useState<string[]>([]);
 
   const joinedRef = useRef(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -181,6 +189,24 @@ export default function MeetingRoomPage() {
       dispatch(newMessage(message));
     };
 
+    const handleReaction = (data: { userId: string; emoji: string }) => {
+      dispatch(addReaction({ ...data, timestamp: new Date().toISOString() }));
+    };
+
+    const handleHandRaised = (data: { userId: string; raised: boolean }) => {
+      setRaisedHands((prev) =>
+        data.raised ? [...prev.filter((id) => id !== data.userId), data.userId] : prev.filter((id) => id !== data.userId)
+      );
+    };
+
+    const handlePollCreated = (data: any) => {
+      dispatch(addPoll(data));
+    };
+
+    const handlePollUpdated = (data: any) => {
+      dispatch(updatePollResults({ pollId: data.pollId, results: data.results }));
+    };
+
     socketService.on('meeting:existing-participants', handleExistingParticipants);
     socketService.on('meeting:user-joined', handleUserJoined);
     socketService.on('meeting:user-left', handleUserLeft);
@@ -190,6 +216,10 @@ export default function MeetingRoomPage() {
     socketService.on('meeting:user-toggle-audio', handleToggleAudio);
     socketService.on('meeting:user-toggle-video', handleToggleVideo);
     socketService.on('chat:new-message', handleNewMessage);
+    socketService.on('meeting:reaction', handleReaction);
+    socketService.on('meeting:hand-raised', handleHandRaised);
+    socketService.on('poll:created', handlePollCreated);
+    socketService.on('poll:updated', handlePollUpdated);
 
     return () => {
       socketService.off('meeting:existing-participants', handleExistingParticipants);
@@ -201,6 +231,10 @@ export default function MeetingRoomPage() {
       socketService.off('meeting:user-toggle-audio', handleToggleAudio);
       socketService.off('meeting:user-toggle-video', handleToggleVideo);
       socketService.off('chat:new-message', handleNewMessage);
+      socketService.off('meeting:reaction', handleReaction);
+      socketService.off('meeting:hand-raised', handleHandRaised);
+      socketService.off('poll:created', handlePollCreated);
+      socketService.off('poll:updated', handlePollUpdated);
     };
   }, [dispatch, user?.id]);
 
@@ -236,6 +270,12 @@ export default function MeetingRoomPage() {
   const handleToggleChat = useCallback(() => {
     dispatch(setChatOpen(!isChatOpen));
   }, [isChatOpen, dispatch]);
+
+  const handleToggleHand = useCallback(() => {
+    const newState = !isHandRaised;
+    setIsHandRaised(newState);
+    socketService.emit('meeting:raise-hand', { raised: newState });
+  }, [isHandRaised]);
 
   const sendAudioChunk = useCallback(async (chunks: Blob[]) => {
     if (chunks.length === 0) return;
@@ -457,7 +497,7 @@ export default function MeetingRoomPage() {
           </div>
 
           {/* Video tiles */}
-          <div className={`flex-1 min-h-0 overflow-hidden p-4 grid ${getGridClass()} gap-3 auto-rows-fr`}>
+          <div className={`flex-1 min-h-0 overflow-hidden p-4 grid ${getGridClass()} gap-3 auto-rows-fr relative`}>
             {allStreams.map((s) => (
               <VideoTile
                 key={s.userId}
@@ -470,6 +510,19 @@ export default function MeetingRoomPage() {
                 className="min-h-0"
               />
             ))}
+
+            {/* Floating reactions overlay */}
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 pointer-events-none z-40">
+              <FloatingReactions />
+            </div>
+
+            {/* Raised hands indicator */}
+            {raisedHands.length > 0 && (
+              <div className="absolute top-4 right-4 bg-yellow-500/90 text-white rounded-lg px-3 py-2 text-sm font-medium flex items-center gap-2 z-40">
+                <Hand className="w-4 h-4" />
+                {raisedHands.length} hand{raisedHands.length > 1 ? 's' : ''} raised
+              </div>
+            )}
           </div>
 
           {/* Controls */}
@@ -489,6 +542,38 @@ export default function MeetingRoomPage() {
             onToggleRecording={() => {}}
             onToggleTranscribe={handleToggleTranscribe}
             onLeaveMeeting={handleLeaveMeeting}
+            extraControls={
+              <div className="flex items-center gap-1.5 ml-1 border-l border-white/10 pl-2">
+                <button
+                  onClick={handleToggleHand}
+                  className={`rounded-full p-3 transition-all duration-200 ${
+                    isHandRaised ? 'bg-yellow-500 text-white' : 'bg-white/15 text-white hover:bg-white/25'
+                  }`}
+                  title={isHandRaised ? 'Lower hand' : 'Raise hand'}
+                >
+                  <Hand className="h-5 w-5" />
+                </button>
+                <ReactionBar socket={socketService.getSocket()} meetingId={currentMeeting?.id || ''} />
+                <button
+                  onClick={() => setIsPollsOpen(!isPollsOpen)}
+                  className={`rounded-full p-3 transition-all duration-200 ${
+                    isPollsOpen ? 'bg-brand-500 text-white' : 'bg-white/15 text-white hover:bg-white/25'
+                  }`}
+                  title="Polls"
+                >
+                  <BarChart3 className="h-5 w-5" />
+                </button>
+                <button
+                  onClick={() => setIsActionItemsOpen(!isActionItemsOpen)}
+                  className={`rounded-full p-3 transition-all duration-200 ${
+                    isActionItemsOpen ? 'bg-brand-500 text-white' : 'bg-white/15 text-white hover:bg-white/25'
+                  }`}
+                  title="Action Items"
+                >
+                  <CheckSquare className="h-5 w-5" />
+                </button>
+              </div>
+            }
           />
         </div>
 
@@ -496,6 +581,32 @@ export default function MeetingRoomPage() {
         {isChatOpen && currentMeeting?.chat && (
           <div className="w-80 flex-shrink-0 border-l border-white/10">
             <MeetingChat chatId={currentMeeting.chat.id} />
+          </div>
+        )}
+
+        {/* Polls Panel */}
+        {isPollsOpen && currentMeeting?.id && (
+          <div className="w-80 flex-shrink-0 border-l border-white/10 relative">
+            <button
+              onClick={() => setIsPollsOpen(false)}
+              className="absolute top-3 right-3 p-1 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 z-10"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <PollPanel socket={socketService.getSocket()} meetingId={currentMeeting.id} />
+          </div>
+        )}
+
+        {/* Action Items Panel */}
+        {isActionItemsOpen && currentMeeting?.id && (
+          <div className="w-80 flex-shrink-0 border-l border-white/10 relative">
+            <button
+              onClick={() => setIsActionItemsOpen(false)}
+              className="absolute top-3 right-3 p-1 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 z-10"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <ActionItemPanel meetingId={currentMeeting.id} />
           </div>
         )}
 
@@ -508,5 +619,25 @@ export default function MeetingRoomPage() {
         )}
       </div>
     </AuthGuard>
+  );
+}
+
+/** Floating emoji reactions component */
+function FloatingReactions() {
+  const reactions = useAppSelector((state: any) => state.features?.reactions || []);
+  const recent = reactions.slice(-6);
+
+  return (
+    <>
+      {recent.map((r: { emoji: string; timestamp: number }, i: number) => (
+        <span
+          key={`${r.timestamp}-${i}`}
+          className="text-3xl animate-bounce-up"
+          style={{ animationDelay: `${i * 80}ms` }}
+        >
+          {r.emoji}
+        </span>
+      ))}
+    </>
   );
 }

@@ -274,3 +274,137 @@ async def ask(req: AskRequest):
     except httpx.HTTPError as e:
         logger.exception("Ollama ask failed")
         raise HTTPException(status_code=502, detail=f"Ollama error: {e}")
+
+
+# ============================================
+# ACTION ITEMS EXTRACTION
+# ============================================
+
+ACTION_ITEMS_PROMPT = """You are an AI assistant that extracts action items from meeting transcripts.
+
+Given the following meeting transcript, identify all action items, tasks, and follow-ups mentioned.
+For each action item, extract:
+1. A concise title
+2. Who is assigned (if mentioned)
+3. Due date (if mentioned)
+
+Respond STRICTLY in this JSON format:
+[
+  {{"title": "...", "assignee": "..." or null, "dueDate": "..." or null}},
+  ...
+]
+
+If no action items are found, return an empty array: []
+
+Transcript:
+{transcript}
+"""
+
+
+class ExtractActionsRequest(BaseModel):
+    transcript: str
+
+
+class ActionItemResult(BaseModel):
+    title: str
+    assignee: Optional[str] = None
+    dueDate: Optional[str] = None
+
+
+class ExtractActionsResponse(BaseModel):
+    action_items: list[ActionItemResult]
+
+
+@app.post("/extract-actions", response_model=ExtractActionsResponse)
+async def extract_actions(req: ExtractActionsRequest):
+    if not req.transcript.strip():
+        return ExtractActionsResponse(action_items=[])
+
+    prompt = ACTION_ITEMS_PROMPT.format(transcript=req.transcript[:20000])
+
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            r = await client.post(
+                f"{OLLAMA_URL}/api/generate",
+                json={
+                    "model": OLLAMA_MODEL,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {"temperature": 0.2},
+                },
+            )
+            r.raise_for_status()
+            data = r.json()
+            raw = data.get("response", "").strip()
+
+            # Try to parse JSON from response
+            import json
+            try:
+                # Find JSON array in response
+                start = raw.find("[")
+                end = raw.rfind("]") + 1
+                if start >= 0 and end > start:
+                    items = json.loads(raw[start:end])
+                    return ExtractActionsResponse(
+                        action_items=[ActionItemResult(**item) for item in items]
+                    )
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+            return ExtractActionsResponse(action_items=[])
+    except httpx.HTTPError as e:
+        logger.exception("Ollama extract-actions failed")
+        raise HTTPException(status_code=502, detail=f"Ollama error: {e}")
+
+
+# ============================================
+# MULTI-LANGUAGE TRANSLATION
+# ============================================
+
+TRANSLATE_PROMPT = """Translate the following text to {target_language}. 
+Only output the translation, nothing else.
+
+Text: {text}"""
+
+
+class TranslateRequest(BaseModel):
+    text: str
+    target_language: str
+
+
+class TranslateResponse(BaseModel):
+    translated_text: str
+    target_language: str
+
+
+@app.post("/translate", response_model=TranslateResponse)
+async def translate(req: TranslateRequest):
+    if not req.text.strip():
+        return TranslateResponse(translated_text="", target_language=req.target_language)
+
+    prompt = TRANSLATE_PROMPT.format(
+        target_language=req.target_language,
+        text=req.text,
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            r = await client.post(
+                f"{OLLAMA_URL}/api/generate",
+                json={
+                    "model": OLLAMA_MODEL,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {"temperature": 0.2},
+                },
+            )
+            r.raise_for_status()
+            data = r.json()
+            return TranslateResponse(
+                translated_text=data.get("response", "").strip(),
+                target_language=req.target_language,
+            )
+    except httpx.HTTPError as e:
+        logger.exception("Ollama translate failed")
+        raise HTTPException(status_code=502, detail=f"Ollama error: {e}")
+

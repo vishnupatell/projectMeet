@@ -33,6 +33,7 @@ interface MeetingControlsProps {
   readonly onToggleRecording: () => void;
   readonly onToggleTranscribe: () => void;
   readonly onLeaveMeeting: () => void;
+  readonly extraControls?: React.ReactNode;
 }
 
 export function MeetingControls({
@@ -51,6 +52,7 @@ export function MeetingControls({
   onToggleRecording,
   onToggleTranscribe,
   onLeaveMeeting,
+  extraControls,
 }: MeetingControlsProps) {
   return (
     <div className="flex items-center justify-center gap-3 border-t border-white/10 bg-ink-900/90 px-6 py-4 backdrop-blur">
@@ -152,6 +154,9 @@ export function MeetingControls({
         <Users className="h-4 w-4" />
         <span className="font-semibold">{participantCount}</span>
       </div>
+
+      {/* Extra feature controls */}
+      {extraControls}
 
       {/* Leave */}
       <button

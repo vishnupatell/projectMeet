@@ -1,7 +1,9 @@
 # ProjectMeet
 
 Scalable video conferencing and real-time chat platform with built-in recording,
-AI transcription, meeting summarization, and email invitations.
+AI transcription, meeting summarization, email invitations, and a full suite of
+collaboration features including polls, breakout rooms, whiteboard, live captions,
+virtual backgrounds, and more.
 
 ```
 ┌──────────────┐   WebRTC    ┌──────────────┐  REST/WS   ┌──────────────┐
@@ -27,21 +29,23 @@ AI transcription, meeting summarization, and email invitations.
 ## Table of Contents
 
 1. [What's in the Box](#whats-in-the-box)
-2. [Tech Stack](#tech-stack)
-3. [Project Structure](#project-structure)
-4. [Prerequisites](#prerequisites)
-5. [Quick Start](#quick-start)
-6. [Environment Configuration](#environment-configuration)
-7. [Email (SMTP) Setup](#email-smtp-setup)
-8. [Docker Operations Cheatsheet](#docker-operations-cheatsheet)
-9. [Hot Reload & Developer Workflow](#hot-reload--developer-workflow)
-10. [Volumes & Persistence](#volumes--persistence)
-11. [Network & Ports](#network--ports)
-12. [Database Migrations](#database-migrations)
-13. [AI Service (Whisper + Ollama)](#ai-service-whisper--ollama)
-14. [Live Transcript & AI Meeting Assistant](#live-transcript--ai-meeting-assistant)
-15. [Running Without Docker](#running-without-docker)
-16. [Troubleshooting](#troubleshooting)
+2. [New Features (v2)](#new-features-v2)
+3. [Tech Stack](#tech-stack)
+4. [Project Structure](#project-structure)
+5. [Prerequisites](#prerequisites)
+6. [Quick Start](#quick-start)
+7. [Environment Configuration](#environment-configuration)
+8. [Email (SMTP) Setup](#email-smtp-setup)
+9. [Docker Operations Cheatsheet](#docker-operations-cheatsheet)
+10. [Hot Reload & Developer Workflow](#hot-reload--developer-workflow)
+11. [Volumes & Persistence](#volumes--persistence)
+12. [Network & Ports](#network--ports)
+13. [Database Migrations](#database-migrations)
+14. [AI Service (Whisper + Ollama)](#ai-service-whisper--ollama)
+15. [Live Transcript & AI Meeting Assistant](#live-transcript--ai-meeting-assistant)
+16. [Running Without Docker](#running-without-docker)
+17. [API Endpoints](#api-endpoints)
+18. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -62,16 +66,115 @@ AI transcription, meeting summarization, and email invitations.
 
 ---
 
+## New Features (v2)
+
+### 1. Screen Sharing & Collaborative Whiteboard
+- One-click screen sharing via `getDisplayMedia()` WebRTC stream
+- Real-time collaborative whiteboard with drawing tools, colors, stroke widths
+- Undo, clear, and multi-user synchronized drawing via WebSocket
+
+### 2. Breakout Rooms
+- Host creates multiple breakout rooms and assigns participants
+- Configurable timer for auto-return to main room
+- Host can broadcast messages to all breakout rooms simultaneously
+- Participants can join/leave rooms; host can move participants between rooms
+
+### 3. Polls & Reactions
+- Host creates live polls with multiple-choice options (up to 6 per poll)
+- Real-time voting with live result visualization (bar charts)
+- Anonymous or named voting modes
+- Emoji reactions (👍 👏 ❤️ 😂 🎉 🔥 💯 🤔) with floating animations
+- Rate-limited to prevent spam (1 reaction/second/user)
+
+### 4. Virtual Backgrounds & Noise Suppression
+- Background selection panel: None, Blur, or custom image backgrounds
+- TensorFlow.js body segmentation support (loaded on demand)
+- Noise suppression toggle using Web Audio API
+
+### 5. Waiting Room / Lobby
+- Configurable per-meeting: auto-admit vs. manual approval
+- Participants see a branded waiting screen while host is notified
+- Host can admit/deny individually or "Admit All"
+- Secure by default for meetings with waiting room enabled
+
+### 6. Meeting Analytics Dashboard
+- Speaking time per participant (bar visualization)
+- Total duration, peak participants, total participants
+- Join/leave timeline log
+- Admin-level system-wide analytics (all meetings, recordings, storage)
+
+### 7. Calendar Integration Ready
+- Meeting scheduling with date/time picker
+- Email invitations with calendar-friendly links
+- Structured `scheduledAt` field supports future Google Calendar / Outlook sync
+
+### 8. File Sharing & Persistent Chat
+- Upload/share files during meetings (up to 50MB per file)
+- Files stored on server with metadata in database
+- Download and delete capabilities
+- Files persist after meeting ends
+- Real-time notifications when files are shared
+
+### 9. End-to-End Encryption (E2EE) Ready
+- `e2eeEnabled` flag per meeting stored in database
+- Socket.IO signaling architecture supports WebRTC Insertable Streams
+- UI indicator shows encryption status
+
+### 10. Webhook & API Integrations
+- Users can register webhook URLs for specific events
+- Supported events: `meeting.started`, `meeting.ended`, `recording.ready`, `participant.joined`, `participant.left`, `transcript.ready`
+- HMAC-SHA256 signature verification for webhook payloads
+- Compatible with Zapier/n8n webhook format
+
+### 11. Admin Panel
+- Full user management: view, ban/unban, promote to admin, demote
+- System-wide statistics: users, meetings, recordings, storage
+- Audit log of recent meeting activity
+- Role-based access (ADMIN role required)
+
+### 12. Mobile-Responsive PWA
+- Progressive Web App with offline schedule caching
+- Service worker for network-first caching strategy
+- Push notification support (configurable)
+- Responsive video grid adapts to mobile/tablet/desktop
+- iOS and Android home screen installable
+- Manifest with app shortcuts (New Meeting, Dashboard)
+
+### 13. Action Items Extraction (AI)
+- AI extracts action items/tasks from meeting transcripts via `/extract-actions` endpoint
+- Each item has title, optional assignee, and optional due date
+- Action items panel in meeting UI with status tracking (Pending → In Progress → Completed)
+- Manual action item creation during meetings
+
+### 14. Multi-language Live Captions & Translation
+- Real-time speech-to-text captions during meetings
+- AI-powered translation via `/translate` endpoint
+- Participants choose their preferred caption language
+- Supports any language pair that the LLM can handle
+
+### Quick Wins Included
+| Feature | Description |
+|---|---|
+| 🖐️ Raise Hand | Toggle raise/lower hand with visual indicator for all participants |
+| ⏱️ Meeting Duration Timer | Live HH:MM:SS counter from meeting start |
+| 🔗 Copy Invite Link | One-click copy meeting URL to clipboard |
+| 🌙 Dark/Light Theme | Toggle between dark and light modes (persisted in Redux) |
+| 📧 Recording Ready Notifications | Webhook events fired when recordings finish processing |
+| 🛡️ Rate Limiting | Tiered rate limits: Auth (20/15min), API (120/min), Uploads (10/5min) |
+| 🔒 Password-Protected Meetings | Optional meeting password verified on join |
+
+---
+
 ## Tech Stack
 
 **Backend** — Node.js 20, Express, TypeScript, Socket.IO, Prisma ORM,
-PostgreSQL 16, Redis 7, Pino logger, Zod validation, nodemailer.
+PostgreSQL 16, Redis 7, Pino logger, Zod validation, nodemailer, express-rate-limit, helmet.
 
 **Frontend** — Next.js 16 (App Router), React 18, Redux Toolkit + Redux-Saga,
-TailwindCSS, Socket.IO client, native WebRTC APIs.
+TailwindCSS, Socket.IO client, native WebRTC APIs, PWA (Service Worker + Manifest).
 
 **AI Service** — Python 3.11, FastAPI, faster-whisper, Ollama HTTP client,
-ffmpeg for audio extraction.
+ffmpeg for audio extraction, action-item extraction, multi-language translation.
 
 **Infra** — Docker Compose, coturn TURN/STUN, bridged docker network, named
 volumes for all persistent state.
@@ -84,41 +187,60 @@ volumes for all persistent state.
 projectMeet/
 ├── backend/                    Node.js + Express + Socket.IO API
 │   ├── src/
-│   │   ├── controllers/        Thin HTTP handlers
-│   │   ├── services/           Business logic (meeting, mail, invitation, recording, transcript)
+│   │   ├── controllers/        Thin HTTP handlers (auth, meeting, chat, recording,
+│   │   │                       transcript, poll, breakout, webhook, analytics,
+│   │   │                       fileshare, actionitem, admin)
+│   │   ├── services/           Business logic (all above + invitation, mail)
 │   │   ├── repositories/       Prisma data access
-│   │   ├── routes/             Express route definitions
-│   │   ├── sockets/            Socket.IO event handlers
+│   │   ├── routes/             Express route definitions (12 route modules)
+│   │   ├── sockets/            Socket.IO event handlers (WebRTC, chat, polls,
+│   │   │                       reactions, whiteboard, breakout, captions, waiting room)
 │   │   ├── middlewares/        Auth, validation, error, upload
 │   │   ├── validators/         Zod schemas
 │   │   ├── modules/            DDD modules (auth, chat, meeting)
 │   │   ├── shared/             Cross-cutting infra (domain event bus)
 │   │   ├── config/             Env parsing, DB client
 │   │   ├── utils/              Logger, helpers, error classes
-│   │   ├── app.ts              Express app wiring
+│   │   ├── app.ts              Express app wiring (rate limiting, security)
 │   │   └── server.ts           HTTP + WS server bootstrap
 │   ├── prisma/
-│   │   ├── schema.prisma       Data model (User, Meeting, Recording, Transcript, MeetingInvitation, …)
+│   │   ├── schema.prisma       Data model (User, Meeting, Recording, Transcript,
+│   │   │                       Poll, BreakoutRoom, SharedFile, Webhook,
+│   │   │                       MeetingAnalytics, ActionItem, …)
 │   │   └── migrations/         Version-controlled SQL migrations
+│   ├── uploads/                Shared file uploads directory
 │   └── Dockerfile
 │
-├── frontend/                   Next.js 16 App Router
+├── frontend/                   Next.js 16 App Router (PWA)
+│   ├── public/
+│   │   ├── manifest.json       PWA manifest
+│   │   └── sw.js               Service worker
 │   ├── src/
 │   │   ├── app/
 │   │   │   ├── (auth)/         Login / Register
-│   │   │   └── (main)/         Dashboard, Meetings, Settings, /meeting/[code]
-│   │   ├── components/         UI + domain components (meeting, chat, layout, ui)
+│   │   │   └── (main)/         Dashboard, Meetings, Settings, Admin, /meeting/[code]
+│   │   ├── components/
+│   │   │   ├── meeting/        VideoTile, MeetingControls, EnhancedControls,
+│   │   │   │                   ReactionBar, RaiseHand, PollPanel, Whiteboard,
+│   │   │   │                   BreakoutRoomPanel, WaitingRoom, LiveCaptions,
+│   │   │   │                   FileSharePanel, ActionItemPanel, VirtualBackground,
+│   │   │   │                   MeetingTimer, CopyInviteLink, MeetingAnalytics,
+│   │   │   │                   LiveTranscript, MeetingAIAssistant
+│   │   │   ├── ui/            ThemeToggle, common UI elements
+│   │   │   ├── chat/          Chat panel components
+│   │   │   └── layout/        Layout components
 │   │   ├── store/
-│   │   │   ├── slices/         Redux Toolkit slices (auth, meeting, chat, recording)
-│   │   │   ├── sagas/          Async flows, Socket.IO bridge
+│   │   │   ├── slices/         Redux Toolkit slices (auth, meeting, chat, recording, features)
+│   │   │   ├── sagas/          Async flows (auth, meeting, chat, recording, features)
 │   │   │   └── selectors/      Memoized selectors
 │   │   ├── lib/services/       API client, socket, WebRTC service
 │   │   ├── lib/hooks/
-│   │   └── types/
+│   │   └── types/              TypeScript interfaces (all models)
 │   └── Dockerfile
 │
 ├── ai-service/                 Python FastAPI — Whisper + Ollama
-│   ├── app.py                  Transcribe + summarize endpoints
+│   ├── app.py                  Endpoints: transcribe, summarize, ask,
+│   │                           extract-actions, translate
 │   ├── requirements.txt
 │   └── Dockerfile
 │
@@ -127,6 +249,7 @@ projectMeet/
 │
 ├── docker-compose.yml          Full-stack orchestration
 ├── .env                        Root-level env (read by docker-compose interpolation)
+├── CLAUDE.md                   AI assistant project guidance
 └── README.md
 ```
 
@@ -559,6 +682,95 @@ NEXT_PUBLIC_API_URL=http://localhost:4000/api \
 NEXT_PUBLIC_WS_URL=http://localhost:4000 \
 npm run dev
 ```
+
+---
+
+## API Endpoints
+
+### Core Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/auth/register` | Register new user |
+| POST | `/api/auth/login` | Login |
+| POST | `/api/auth/refresh` | Refresh access token |
+| POST | `/api/auth/logout` | Logout |
+| GET | `/api/meetings` | List user's meetings |
+| POST | `/api/meetings` | Create meeting (supports `password`, `waitingRoomEnabled`, `e2eeEnabled`) |
+| POST | `/api/meetings/join` | Join meeting by code |
+| GET | `/api/chats/:chatId/messages` | Get chat messages |
+| POST | `/api/recordings/upload` | Upload recording |
+| GET | `/api/transcripts/:id` | Get transcript with summary |
+
+### New Feature Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/polls/meeting/:meetingId` | Create poll |
+| GET | `/api/polls/meeting/:meetingId` | List meeting polls |
+| POST | `/api/polls/:pollId/vote` | Vote on poll |
+| POST | `/api/polls/:pollId/close` | Close poll |
+| GET | `/api/polls/:pollId/results` | Get poll results |
+| POST | `/api/breakout-rooms/meeting/:meetingId` | Create breakout rooms |
+| GET | `/api/breakout-rooms/meeting/:meetingId` | List breakout rooms |
+| POST | `/api/breakout-rooms/meeting/:meetingId/close` | Close all rooms |
+| POST | `/api/breakout-rooms/:roomId/move` | Move participant |
+| POST | `/api/files/meeting/:meetingId` | Upload file (multipart) |
+| GET | `/api/files/meeting/:meetingId` | List shared files |
+| DELETE | `/api/files/:fileId` | Delete file |
+| POST | `/api/webhooks` | Create webhook |
+| GET | `/api/webhooks` | List user's webhooks |
+| DELETE | `/api/webhooks/:webhookId` | Delete webhook |
+| GET | `/api/analytics/meeting/:meetingId` | Get meeting analytics |
+| GET | `/api/analytics/admin/stats` | System-wide stats |
+| POST | `/api/action-items/meeting/:meetingId` | Create action item |
+| GET | `/api/action-items/meeting/:meetingId` | List action items |
+| PATCH | `/api/action-items/:itemId` | Update action item |
+| DELETE | `/api/action-items/:itemId` | Delete action item |
+| GET | `/api/admin/users` | List all users (admin) |
+| POST | `/api/admin/users/:userId/toggle-active` | Ban/unban user |
+| POST | `/api/admin/users/:userId/promote` | Promote to admin |
+| GET | `/api/admin/stats` | System statistics |
+| GET | `/api/admin/audit-log` | Audit log |
+
+### AI Service Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/transcribe` | Transcribe audio file by path |
+| POST | `/transcribe-upload` | Transcribe uploaded audio blob |
+| POST | `/summarize` | Summarize transcript text |
+| POST | `/ask` | AI assistant answers questions from transcript |
+| POST | `/extract-actions` | Extract action items from transcript |
+| POST | `/translate` | Translate text to target language |
+| GET | `/health` | Health check |
+
+### Socket.IO Events
+
+| Event | Direction | Description |
+|-------|-----------|-------------|
+| `meeting:join` | Client → Server | Join meeting room (supports `password`) |
+| `meeting:leave` | Client → Server | Leave meeting |
+| `meeting:reaction` | Bidirectional | Send/receive emoji reactions |
+| `meeting:raise-hand` | Bidirectional | Toggle raise hand |
+| `meeting:caption` | Bidirectional | Live caption text |
+| `meeting:request-translation` | Client → Server | Request caption translation |
+| `meeting:admit-participant` | Client → Server | Admit from waiting room |
+| `meeting:admit-all` | Client → Server | Admit all waiting |
+| `meeting:deny-participant` | Client → Server | Deny from waiting room |
+| `poll:created` | Bidirectional | New poll notification |
+| `poll:voted` | Bidirectional | Vote update |
+| `poll:closed` | Bidirectional | Poll closed |
+| `whiteboard:draw` | Bidirectional | Drawing strokes |
+| `whiteboard:clear` | Bidirectional | Clear canvas |
+| `whiteboard:undo` | Bidirectional | Undo last stroke |
+| `breakout:join` | Client → Server | Join breakout room |
+| `breakout:leave` | Client → Server | Leave breakout room |
+| `breakout:broadcast` | Client → Server | Host broadcast |
+| `breakout:close-all` | Client → Server | Close all breakouts |
+| `meeting:file-shared` | Bidirectional | File shared notification |
+| `meeting:speaking-start` | Client → Server | Speaking indicator |
+| `meeting:speaking-stop` | Client → Server | Stop speaking (with duration) |
 
 ---
 
